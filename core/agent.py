@@ -3,9 +3,9 @@ Agent基类
 """
 from abc import ABC, abstractmethod # 抽象基类
 from typing import Optional,Dict,Any
-from config import Config
-from llm import MyAgentsLLM
-from message import Message
+from .config import Config
+from .llm import MyAgentsLLM
+from .message import Message
 
 
 class Agent(ABC):

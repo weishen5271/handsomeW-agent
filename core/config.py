@@ -15,7 +15,7 @@ class Config(BaseModel):
     presence_penalty: float = 0.0
 
     # 系统配置
-    debug = False
+    debug:bool = False
     log_level: str = "INFO"
 
     @classmethod

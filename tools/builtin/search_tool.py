@@ -1,5 +1,6 @@
 from tavily import TavilyClient
 from .base_tool import Tool
+from typing import Dict
 import os
 class SearchTool(Tool):
 
@@ -8,11 +9,14 @@ class SearchTool(Tool):
         self.description = description
         self.name = "SearchTool"
 
-    def execute(self,keyword:str,limit:int=10) -> str:
+    def execute(self,input:Dict,limit:int=10) -> str:
         """
             一个基于Tavily的实战网页搜索引擎工具。
             它会智能地解析搜索结果，优先返回直接答案或知识图谱信息。
         """
+        keyword = input.get("keyword",None)
+        if not keyword:
+            return "请输入搜索关键词"
         print(f"🔍 正在执行 tavily 搜索,搜索关键词: {keyword}")
         # 1. 从环境变量获取API密钥并实例化客户端
         client = TavilyClient(api_key=self.api_key)

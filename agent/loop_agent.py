@@ -26,16 +26,13 @@ class LoopAgent(BaseAgent):
         self._running_status = True
         self.skill_loader = SkillsLocader(Path("."))
         self.context = ContextBuilder()
+        self._register_default_tools()
 
 
     def _register_default_tools(self):
         # 注册文件工具
         self.context.add_tools(ReadFileTool())
         self.context.add_tools(WriteFileTool())
-
-
-
-
     async def run(self,input:str) -> Optional[str]:
         """
         循环执行直到满足条件
@@ -48,7 +45,7 @@ class LoopAgent(BaseAgent):
         # 调用LLM
         message_list.append(Message(role="user", content=input))
         # message_list.append(Message(role="tool",content=tool_output))
-        llm_response = await self.llm.invoke(message_list,tools=self.context.get_all_tools())
+        llm_response = await self.llm.invoke(message_list,tools=self.context.get_tool_definitions())
 
         print(llm_response)
 

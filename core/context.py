@@ -4,16 +4,22 @@ from tools.builtin.base_tool import Tool
 from .skill import SkillsLocader
 from tools.tool_executor import ToolExecutor
 from pathlib import Path
+import platform
 import re
+from utils import find_project_root
 
 class ContextBuilder():
+    BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md", "IDENTITY.md"]
     def __init__(self):
         self.skill_loader = SkillsLocader(Path("."))
         self.toolExecutor = ToolExecutor()
+        current_dir = Path.cwd()
+        self.workspace = find_project_root(start_dir = current_dir) / "workspace"
 
     def build_message(self,system_prompt:str) -> List[Message]:
         message_list = []
         system_prompt = self._get_enhanced_system_prompt(system_prompt)
+        print("生成的系统提示词" + system_prompt)
         message_list.append(Message(role="system", content=system_prompt))
         return message_list
 
@@ -23,21 +29,42 @@ class ContextBuilder():
         :return:
         """
         # 构建tool相关的提示词
-        tools_str = "\n".join([tool.get_tools_description() for tool in self.toolExecutor.get_all_tools()])
-        # 替换系统提示词中的工具占位符
-        system_prompt = system_prompt.format(tools=tools_str)
-        system_prompt += "\n" + " 当需要使用工具时，请使用以下格式："
-        system_prompt += "\n" + "[TOOL_CALL: SearchTool:{'keyword':'北京天气'}]"
-        # 构建skill相关的提示词
-        skill_parts = []
-        # 获取所有的skill的summary
+        # tools_str = "\n".join([tool.get_tools_description() for tool in self.toolExecutor.get_all_tools()])
+        # # 替换系统提示词中的工具占位符
+        # system_prompt = system_prompt.format(tools=tools_str)
+        # system_prompt += "\n" + " 当需要使用工具时，请使用以下格式："
+        # system_prompt += "\n" + "[TOOL_CALL: SearchTool:{'keyword':'北京天气'}]"
+        # # 构建skill相关的提示词
+        # skill_parts = []
+        # # 获取所有的skill的summary
+        # skills_summary = self.skill_loader.load_skill_summary()
+        # skill_parts.append(f"""# Skills
+        #     The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
+        #     Skills with available="false" need dependencies installed first - you can try installing them with apt/brew.
+        #     {skills_summary}""")
+        # system_prompt += "\n".join(skill_parts)
+
+        parts = []
+
+        # Core identity
+        parts.append(self._get_identity())
+
+        # Bootstrap files
+        bootstrap = self._load_bootstrap_files()
+        if bootstrap:
+            parts.append(bootstrap)
+
+        # 2. Available skills: only show summary (agent uses read_file to load)
         skills_summary = self.skill_loader.load_skill_summary()
-        skill_parts.append(f"""# Skills
+        if skills_summary:
+            parts.append(f"""# Skills
             The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
             Skills with available="false" need dependencies installed first - you can try installing them with apt/brew.
             {skills_summary}""")
-        system_prompt += "\n".join(skill_parts)
-        return system_prompt
+
+        return "\n\n---\n\n".join(parts)
+
+
 
 
     def _execute_tool(self,tool_list:list) -> Optional[str]:
@@ -68,6 +95,9 @@ class ContextBuilder():
     def get_all_tools(self):
         return self.toolExecutor.get_all_tools()
 
+    def get_tool_definitions(self):
+        return self.toolExecutor.get_definitions()
+
     def _parse_tool_calls(self, text: str) -> list:
         """解析文本中的工具调用"""
         pattern = r'\[TOOL_CALL:([^:]+):([^\]]+)\]'
@@ -82,3 +112,52 @@ class ContextBuilder():
             })
 
         return tool_calls
+
+    def _get_identity(self) -> str:
+        """Get the core identity section."""
+        from datetime import datetime
+        import time as _time
+        now = datetime.now().strftime("%Y-%m-%d %H:%M (%A)")
+        tz = _time.strftime("%Z") or "UTC"
+        workspace_path = str(self.workspace.expanduser().resolve())
+        system = platform.system()
+        runtime = f"{'macOS' if system == 'Darwin' else system} {platform.machine()}, Python {platform.python_version()}"
+
+        return f"""# nanobot 🐈
+            You are nanobot, a helpful AI assistant. You have access to tools that allow you to:
+            - Read, write, and edit files
+            - Execute shell commands
+            - Search the web and fetch web pages
+            - Send messages to users on chat channels
+            - Spawn subagents for complex background tasks
+            
+            ## Current Time
+            {now} ({tz})
+            
+            ## Runtime
+            {runtime}
+            
+            ## Workspace
+            Your workspace is at: {workspace_path}
+            - Memory files: {workspace_path}/memory/MEMORY.md
+            - Daily notes: {workspace_path}/memory/YYYY-MM-DD.md
+            - Custom skills: {workspace_path}/skills/{{skill-name}}/SKILL.md
+            
+            IMPORTANT: When responding to direct questions or conversations, reply directly with your text response.
+            Only use the 'message' tool when you need to send a message to a specific chat channel (like WhatsApp).
+            For normal conversation, just respond with text - do not call the message tool.
+            
+            Always be helpful, accurate, and concise. When using tools, think step by step: what you know, what you need, and why you chose this tool.
+            When remembering something, write to {workspace_path}/memory/MEMORY.md"""
+
+    def _load_bootstrap_files(self) -> str:
+        """Load all bootstrap files from workspace."""
+        parts = []
+
+        for filename in self.BOOTSTRAP_FILES:
+            file_path = self.workspace / filename
+            if file_path.exists():
+                content = file_path.read_text(encoding="utf-8")
+                parts.append(f"## {filename}\n\n{content}")
+
+        return "\n\n".join(parts) if parts else ""

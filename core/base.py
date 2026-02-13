@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from tools.builtin.base_tool import Tool
+from typing import Any
 @dataclass
 class LLMResponse:
     """Response from an LLM provider."""
@@ -13,3 +14,11 @@ class LLMResponse:
     def has_tool_calls(self) -> bool:
         """Check if response contains tool calls."""
         return len(self.tool_calls) > 0
+
+
+@dataclass
+class ToolCallRequest:
+    """A tool call request from the LLM."""
+    id: str
+    name: str
+    arguments: dict[str, Any]

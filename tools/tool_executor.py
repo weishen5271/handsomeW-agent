@@ -1,5 +1,5 @@
 from tools.builtin.base_tool import Tool
-
+from typing import Any
 class ToolExecutor():
 
     def __init__(self):
@@ -18,3 +18,7 @@ class ToolExecutor():
 
     def get_all_tools(self):
         return self._tools_list
+
+    def get_definitions(self) -> list[dict[str, Any]]:
+        """Get all tool definitions in OpenAI format."""
+        return [tool.to_schema() for tool in self._tools_list]

@@ -16,6 +16,16 @@ class ReadFileTool(Tool):
       def __init__(self):
           self.name = "read_file"
           self.description = "Read the contents of a file at the given path."
+          self.parameters= {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "The file path to read"
+                }
+            },
+            "required": ["path"]
+        }
       def execute(self,input:Dict)->str:
           input_path = input["path"]
           file_path = _resolve_path(input_path)
@@ -31,6 +41,21 @@ class WriteFileTool(Tool):
     def __init__(self):
           self.name = "write_file"
           self.description = "Write the contents of a file at the given path."
+          self.parameters= {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "The file path to write to"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The content to write"
+                }
+            },
+            "required": ["path", "content"]
+        }
+
     def execute(self,input:Dict)->str:
         pass
 

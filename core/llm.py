@@ -3,7 +3,7 @@ import json
 from typing import Literal, Optional,Iterator,Any
 from openai import OpenAI
 from litellm import acompletion
-from core.base import LLMResponse
+from core.base import LLMResponse,ToolCallRequest
 from tools.builtin.base_tool import Tool
 import asyncio
 
@@ -393,7 +393,7 @@ class MyAgentsLLM:
                     except json.JSONDecodeError:
                         args = {"raw": args}
 
-                tool_calls.append(Tool(
+                tool_calls.append(ToolCallRequest(
                     id=tc.id,
                     name=tc.function.name,
                     arguments=args,

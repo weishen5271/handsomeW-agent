@@ -1,6 +1,11 @@
 import os
-from typing import Literal, Optional,Iterator
+import json
+from typing import Literal, Optional,Iterator,Any
 from openai import OpenAI
+from litellm import acompletion
+from core.base import LLMResponse
+from tools.builtin.base_tool import Tool
+import asyncio
 
 # 支持的LLM提供商
 SUPPORTED_PROVIDERS = Literal[
@@ -36,17 +41,19 @@ class MyAgentsLLM:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout or int(os.getenv("LLM_TIMEOUT", "60"))
+        self.provider = provider
+        self.extra_headers = kwargs.get("extra_headers", {})
 
         if not all([self.model, self.api_key, self.base_url]):
             raise ValueError("模型ID、API密钥和服务地址必须被提供或在.env文件中定义。")
 
-        self._client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url,
-            timeout=self.timeout,
-        )
-
-
+        # self._client = OpenAI(
+        #     api_key=self.api_key,
+        #     base_url=self.base_url,
+        #     timeout=self.timeout,
+        # )
+        if provider is None:
+            self.provider = self._auto_detect_provider(self.api_key,self.base_url)
 
     def _auto_detect_provider(self, api_key:str,base_url:str) -> str:
         """
@@ -284,13 +291,13 @@ class MyAgentsLLM:
         except Exception as e:
             print(f"❌ 调用LLM API时发生错误: {e}")
             return None
-    def invoke(self, messages: list[dict[str, str]],tools:list[dict[str, str]] = None, **kwargs) -> str:
+    async def invoke(self, messages: list[dict[str, str]],tools:list[dict[str, str]] = None, **kwargs) -> LLMResponse:
         """
         非流式调用LLM，返回完整响应。
         适用于不需要流式输出的场景。
         """
         try:
-            response = self._client.chat.completions.create(
+            response = await self._chat(
                 model=self.model,
                 messages=messages,
                 tools=tools,
@@ -298,12 +305,7 @@ class MyAgentsLLM:
                 max_tokens=kwargs.get('max_tokens', self.max_tokens),
                 **{k: v for k, v in kwargs.items() if k not in ['temperature', 'max_tokens']}
             )
-            response.choices[0].message.content
-
-            return {
-                "content": response.choices[0].message.content,
-                "tool_call": response.choices[0].message.tool_calls
-            }
+            return response
         except Exception as e:
             raise Exception(f"LLM调用失败: {str(e)}")
 
@@ -314,6 +316,106 @@ class MyAgentsLLM:
         """
         temperature = kwargs.get('temperature')
         yield from self.think(messages, temperature)
+
+
+    async  def _chat(
+            self,
+            messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]] | None = None,
+            model: str | None = None,
+            max_tokens: int = 4096,
+            temperature: float = 0.7,
+            **kwargs
+    ) -> LLMResponse | None:
+        """
+        Send a chat completion request via LiteLLM.
+
+        Args:
+            messages: List of message dicts with 'role' and 'content'.
+            tools: Optional list of tool definitions in OpenAI format.
+            model: Model identifier (e.g., 'anthropic/claude-sonnet-4-5').
+            max_tokens: Maximum tokens in response.
+            temperature: Sampling temperature.
+
+        Returns:
+            LLMResponse with content and/or tool calls.
+        """
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+
+        # Apply model-specific overrides (e.g. kimi-k2.5 temperature)
+        #self._apply_model_overrides(model, kwargs)
+
+        # Pass api_key directly — more reliable than env vars alone
+        if self.api_key:
+            kwargs["api_key"] = self.api_key
+
+        # Pass api_base for custom endpoints
+        if self.base_url:
+            kwargs["api_base"] = self.base_url
+
+        # Pass extra headers (e.g. APP-Code for AiHubMix)
+        if self.extra_headers:
+            kwargs["extra_headers"] = self.extra_headers
+
+        if self.provider:
+            kwargs["provider"] = self.provider
+
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+        try:
+            response = await acompletion(**kwargs)
+            return self._parse_response(response)
+
+        except Exception as e:
+            # Return error as content for graceful handling
+            print(f"❌ 调用LLM API时发生错误: {e}")
+    def _parse_response(self, response: Any) -> LLMResponse:
+        """Parse LiteLLM response into LLMResponse."""
+        """Parse LiteLLM response into our standard format."""
+        choice = response.choices[0]
+        message = choice.message
+
+        tool_calls = []
+        if hasattr(message, "tool_calls") and message.tool_calls:
+            for tc in message.tool_calls:
+                # Parse arguments from JSON string if needed
+                args = tc.function.arguments
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {"raw": args}
+
+                tool_calls.append(Tool(
+                    id=tc.id,
+                    name=tc.function.name,
+                    arguments=args,
+                ))
+
+        usage = {}
+        if hasattr(response, "usage") and response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+
+        reasoning_content = getattr(message, "reasoning_content", None)
+
+        return LLMResponse(
+            content=message.content,
+            tool_calls=tool_calls,
+            finish_reason=choice.finish_reason or "stop",
+            usage=usage,
+            reasoning_content=reasoning_content,
+        )
 
 
 # --- 客户端使用示例 ---

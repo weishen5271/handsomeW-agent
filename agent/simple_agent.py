@@ -4,6 +4,7 @@ from core.prompt import BASE_PROMPT_TEMPLATE
 from tools.builtin.search_tool import SearchTool
 from core.message import Message
 from tools.builtin.base_tool import Tool
+from base_agent import BaseAgent
 import re
 
 from tools.tool_executor import ToolExecutor
@@ -11,7 +12,7 @@ from tools.tool_executor import ToolExecutor
 '''
     基础agent
 '''
-class SimpleAgent:
+class SimpleAgent(BaseAgent):
     def __init__(self,name:str,llm: MyAgentsLLM,system_prompt: str):
         self.name = name
         self.llm = llm

@@ -1,10 +1,11 @@
 from typing import Dict
 
 class Tool:
-    def __init__(self,name:str,description:str):
+    def __init__(self,id:str,name:str,description:str,arguments:Dict):
+        self.id = id
         self.name = name
         self.description = description
-
+        self.arguments = arguments
     def execute(self,input:Dict)->str:
         pass
 

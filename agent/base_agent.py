@@ -1,9 +1,15 @@
+from abc import ABC,abstractmethod
+from typing import Optional
+from core.llm import MyAgentsLLM
+from core.base import LLMResponse,ToolCallRequest
 
-class BaseAgent:
+
+class BaseAgent(ABC):
     def __init__(self):
         pass
 
-    def run(self,input:str):
+    @abstractmethod
+    def run(self,input_str:str) -> Optional[LLMResponse]:
         pass
 
     def _get_enhanced_system_prompt(self) -> str:

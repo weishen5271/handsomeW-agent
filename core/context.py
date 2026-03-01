@@ -15,12 +15,15 @@ class ContextBuilder():
         self.toolExecutor = ToolExecutor()
         current_dir = Path.cwd()
         self.workspace = find_project_root(start_dir = current_dir) / "workspace"
+        self.history_message = []
 
     def build_message(self,system_prompt:str) -> List[Message]:
         message_list = []
         system_prompt = self._get_enhanced_system_prompt(system_prompt)
         print("生成的系统提示词" + system_prompt)
         message_list.append(Message(role="system", content=system_prompt))
+        if self.history_message:
+            message_list.extend(self.history_message)
         return message_list
 
     def _get_enhanced_system_prompt(self,system_prompt:str) -> str:
@@ -47,8 +50,13 @@ class ContextBuilder():
         parts = []
 
         # Core identity
-        parts.append(self._get_identity())
-
+        if system_prompt is None:
+            parts.append(self._get_identity())
+        else:
+            tools_str = "\n".join([tool.get_tools_description() for tool in self.toolExecutor.get_all_tools()])
+            # 替换系统提示词中的工具占位符
+            system_prompt = system_prompt.format(tools=tools_str)
+            parts.append(system_prompt)
         # Bootstrap files
         bootstrap = self._load_bootstrap_files()
         if bootstrap:
@@ -64,10 +72,7 @@ class ContextBuilder():
 
         return "\n\n---\n\n".join(parts)
 
-
-
-
-    def _execute_tool(self,tool_list:list) -> Optional[str]:
+    def execute_tool(self,tool_list:list) -> Optional[str]:
         response = None
         # 查找对应的工具
         for tool in tool_list:
@@ -161,3 +166,6 @@ class ContextBuilder():
                 parts.append(f"## {filename}\n\n{content}")
 
         return "\n\n".join(parts) if parts else ""
+
+    def add_message(self,message:Message):
+        self.history_message.append(message)

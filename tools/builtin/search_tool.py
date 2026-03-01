@@ -4,10 +4,20 @@ from typing import Dict
 import os
 class SearchTool(Tool):
 
-    def __init__(self,description:str="一个基于Tavily的实战网页搜索引擎工具。"):
+    def __init__(self):
         self.api_key = os.getenv("TAVILY_API_KEY")
-        self.description = description
-        self.name = "SearchTool"
+        self.description = "一个基于Tavily的实战网页搜索引擎工具。"
+        self.parameters = {
+            "type": "object",
+            "properties": {
+                "input": {
+                    "type": "string",
+                    "description": "要搜索的关键词或者短语",
+                }
+            },
+            "required": ["input"]
+        }
+        self.name = "search tool"
 
     def execute(self,input:Dict,limit:int=10) -> str:
         """
@@ -35,4 +45,4 @@ if __name__ == '__main__':
     from dotenv import load_dotenv
     load_dotenv()
     search = SearchTool()
-    print(search.search("今天北京的天气怎么样"))
+    print(search.execute({"keyword":"今天北京的天气怎么样"}))

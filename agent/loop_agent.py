@@ -11,6 +11,7 @@ from core.prompt import BASE_PROMPT_TEMPLATE
 from dotenv import load_dotenv
 from core.context import ContextBuilder
 import asyncio
+from core.base import LLMResponse,ToolCallRequest
 
 
 
@@ -27,23 +28,25 @@ class LoopAgent(BaseAgent):
         self.skill_loader = SkillsLocader(Path("."))
         self.context = ContextBuilder()
         self._register_default_tools()
+        # 执行对超类的初始化
+        super().__init__()
 
 
     def _register_default_tools(self):
         # 注册文件工具
         self.context.add_tools(ReadFileTool())
         self.context.add_tools(WriteFileTool())
-    async def run(self,input:str) -> Optional[str]:
+    async def run(self,input_str:str) -> Optional[LLMResponse]:
         """
         循环执行直到满足条件
-        :param input:
+        :param input_str:
         :return:
         """
         # while self._running_status:
         #  获取提示词
         message_list = self.context.build_message(BASE_PROMPT_TEMPLATE)
         # 调用LLM
-        message_list.append(Message(role="user", content=input))
+        message_list.append(Message(role="user", content=input_str))
         # message_list.append(Message(role="tool",content=tool_output))
         llm_response = await self.llm.invoke(message_list,tools=self.context.get_tool_definitions())
 
@@ -63,5 +66,5 @@ if __name__ == '__main__':
     # 测试循环agent
     load_dotenv()
     agent = LoopAgent("agent", MyAgentsLLM(), BASE_PROMPT_TEMPLATE)
-    response = asyncio.run(agent.run("今天北京的天气怎么样"))
+    response = asyncio.run(agent.run("你有哪些技能?"))
     print(response)

@@ -1,24 +1,22 @@
-from multiprocessing.context import BaseContext
-
 from dotenv import load_dotenv
-
-from core import Agent
-from core.llm import MyAgentsLLM
-from base_agent import BaseAgent
 from typing import Optional, Tuple
+from pathlib import Path
+import json
+import re
+
+from base_agent import BaseAgent
 from core.llm import MyAgentsLLM
 from core.prompt import BASE_PROMPT_TEMPLATE, REACT_PROMPT_TEMPLATE
 from core.message import Message
 from core.context import ContextBuilder
 from core.skill import SkillsLocader
-from pathlib import Path
-from core.base import LLMResponse,ToolCallRequest
+from core.base import LLMResponse
 from tools.builtin.file_tool import ReadFileTool, WriteFileTool
 from tools.builtin.search_tool import SearchTool
-import re
+
 
 class ReactAgent(BaseAgent):
-    def __init__(self, name:str,llm: MyAgentsLLM,system_prompt:str):
+    def __init__(self, name: str, llm: MyAgentsLLM, system_prompt: str):
         super().__init__()
         self.name = name
         self.llm = llm
@@ -28,31 +26,62 @@ class ReactAgent(BaseAgent):
         self.context = ContextBuilder()
         self._register_default_tools()
 
-    async def run(self,input_str:str,max_iterations:int=5,verbose:bool=True) -> Optional[LLMResponse]:
+    async def run(self, input_str: str, max_iterations: int = 5, verbose: bool = True) -> Optional[LLMResponse]:
         """
-          运行ReAct智能体来回答一个问题。
+        运行ReAct智能体来回答一个问题。
         """
-        GREEN = "\033[92m"
-        YELLOW = "\033[93m"
+        green = "\033[92m"
+        yellow = "\033[93m"
         if verbose:
-            print(f"{GREEN} 开始处理问题: {input_str}")
-            # 调用LLM
+            print(f"{green} 开始处理问题: {input_str}")
+
         # 用户输入只写入一次历史，避免每轮重复
         self.context.add_message(Message(role="user", content=input_str))
+
         for iteration in range(max_iterations):
             if verbose:
-                print(f"{GREEN} 第{iteration+1}轮迭代")
+                print(f"{green} 第{iteration + 1}轮迭代")
+
             message_list = self.context.build_message(BASE_PROMPT_TEMPLATE)
-            llm_response = await self.llm.invoke(message_list, tools=self.context.get_tool_definitions())
+            llm_response = await self.llm.invoke(
+                message_list,
+                tools=self.context.get_tool_definitions(),
+            )
+            if llm_response is None:
+                return None
+
             if verbose:
-                print(f"{YELLOW} LLM回复: {llm_response.content}")
-            # 更新对话历史
-            self.context.add_message(Message(role="assistant", content=llm_response.content))
+                print(f"{yellow} LLM回复: {llm_response.content}")
+
+            assistant_metadata = {}
+            if llm_response.tool_calls:
+                assistant_metadata = {
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": json.dumps(tc.arguments, ensure_ascii=False)
+                                if not isinstance(tc.arguments, str)
+                                else tc.arguments,
+                            },
+                        }
+                        for tc in llm_response.tool_calls
+                    ]
+                }
+
+            self.context.add_message(
+                Message(
+                    role="assistant",
+                    content=llm_response.content or "",
+                    metadata=assistant_metadata,
+                )
+            )
+
             if llm_response.tool_calls:
                 tool_response = self.context.execute_tool(llm_response.tool_calls)
-
                 for one in tool_response:
-                    # 工具输出无论 verbose 与否都写历史
                     self.context.add_message(
                         Message(
                             role="tool",
@@ -65,18 +94,19 @@ class ReactAgent(BaseAgent):
                         )
                     )
                     if verbose:
-                        print(f"{GREEN} 执行工具: {llm_response.tool_calls}，返回结果: {one}")
+                        print(f"{green} 执行工具: {one}")
+
             if llm_response.finish_reason == "stop":
                 self._running_status = False
                 if verbose:
-                    print(f"{GREEN} 迭代结束，完成原因: {llm_response.finish_reason}")
+                    print(f"{green} 迭代结束，完成原因: {llm_response.finish_reason}")
                 return llm_response
 
+        return llm_response
+
     def _register_default_tools(self):
-        # 注册文件工具
         self.context.add_tools(ReadFileTool())
         self.context.add_tools(WriteFileTool())
-        # 注册搜索工具
         self.context.add_tools(SearchTool())
 
     def _parse_output(self, text: str) -> Tuple[Optional[str], Optional[str]]:
@@ -99,6 +129,6 @@ class ReactAgent(BaseAgent):
 
 if __name__ == '__main__':
     load_dotenv(verbose=True)
-    agent = ReactAgent(name="ReAct",llm=MyAgentsLLM(),system_prompt="")
+    agent = ReactAgent(name="ReAct", llm=MyAgentsLLM(), system_prompt="")
     message_list = agent.context.build_message(REACT_PROMPT_TEMPLATE)
     print(message_list)

@@ -36,26 +36,36 @@ class ReactAgent(BaseAgent):
         YELLOW = "\033[93m"
         if verbose:
             print(f"{GREEN} 开始处理问题: {input_str}")
+            # 调用LLM
+        # 用户输入只写入一次历史，避免每轮重复
+        self.context.add_message(Message(role="user", content=input_str))
         for iteration in range(max_iterations):
             if verbose:
                 print(f"{GREEN} 第{iteration+1}轮迭代")
             message_list = self.context.build_message(BASE_PROMPT_TEMPLATE)
-            # 调用LLM
-            message_list.append(Message(role="user", content=input_str))
-            # message_list.append(Message(role="tool",content=tool_output))
             llm_response = await self.llm.invoke(message_list, tools=self.context.get_tool_definitions())
             if verbose:
                 print(f"{YELLOW} LLM回复: {llm_response.content}")
             # 更新对话历史
-            self.context.add_message(Message(role="user", content=input_str))
             self.context.add_message(Message(role="assistant", content=llm_response.content))
-
             if llm_response.tool_calls:
                 tool_response = self.context.execute_tool(llm_response.tool_calls)
-                if verbose:
-                    print(f"{GREEN} 执行工具: {llm_response.tool_calls}，返回结果: {tool_response}")
-                    self.context.add_message(Message(role="tool", content=tool_response))
 
+                for one in tool_response:
+                    # 工具输出无论 verbose 与否都写历史
+                    self.context.add_message(
+                        Message(
+                            role="tool",
+                            content=one["content"],
+                            metadata={
+                                "tool_name": one.get("tool_name"),
+                                "tool_call_id": one.get("tool_call_id"),
+                                "is_error": one.get("is_error", False),
+                            },
+                        )
+                    )
+                    if verbose:
+                        print(f"{GREEN} 执行工具: {llm_response.tool_calls}，返回结果: {one}")
             if llm_response.finish_reason == "stop":
                 self._running_status = False
                 if verbose:

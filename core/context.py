@@ -6,7 +6,10 @@ from tools.tool_executor import ToolExecutor
 from pathlib import Path
 import platform
 import re
+import json
+import ast
 from utils import find_project_root
+from core.base import ToolCallRequest
 
 class ContextBuilder():
     BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md", "IDENTITY.md"]
@@ -72,21 +75,78 @@ class ContextBuilder():
 
         return "\n\n---\n\n".join(parts)
 
-    def execute_tool(self,tool_list:list) -> Optional[str]:
-        response = None
-        # 查找对应的工具
-        for tool in tool_list:
-            try:
-                tool_obj = self.toolExecutor.get_tool(tool['tool_name'])
-                if tool_obj:
-                    # 解析参数为字典
-                    params_dict = eval(tool['parameters'])
-                    response = tool_obj.execute(params_dict)
+    def execute_tool(self, tool_list: list) -> list[dict]:
+        """
+        支持 ToolCallRequest 和 dict 两种输入，返回结构化结果列表。
+        """
+        results = []
+
+        for tool_call in tool_list:
+            tool_name = None
+            tool_call_id = None
+            arguments = {}
+
+            # 1) 标准对象：ToolCallRequest
+            if isinstance(tool_call, ToolCallRequest):
+                tool_name = tool_call.name
+                tool_call_id = tool_call.id
+                arguments = tool_call.arguments or {}
+
+            # 2) 兼容 dict（老格式）
+            elif isinstance(tool_call, dict):
+                tool_name = tool_call.get("tool_name") or tool_call.get("name")
+                tool_call_id = tool_call.get("id")
+                raw_args = (
+                        tool_call.get("arguments")
+                        or tool_call.get("parameters")
+                        or {}
+                )
+                if isinstance(raw_args, str):
+                    try:
+                        arguments = json.loads(raw_args)
+                    except json.JSONDecodeError:
+                        arguments = {"raw": raw_args}
+                elif isinstance(raw_args, dict):
+                    arguments = raw_args
                 else:
-                    return f"工具 {tool['name']} 不存在"
+                    arguments = {}
+
+            else:
+                results.append({
+                    "tool_name": "unknown",
+                    "tool_call_id": None,
+                    "content": f"不支持的 tool_call 类型: {type(tool_call)}",
+                    "is_error": True,
+                })
+                continue
+
+            tool_obj = self.toolExecutor.get_tool(tool_name)
+            if not tool_obj:
+                results.append({
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
+                    "content": f"工具不存在: {tool_name}",
+                    "is_error": True,
+                })
+                continue
+
+            try:
+                output = tool_obj.execute(arguments)
+                results.append({
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
+                    "content": str(output),
+                    "is_error": False,
+                })
             except Exception as e:
-                return f"工具执行错误: {str(e)}"
-        return response
+                results.append({
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
+                    "content": f"工具执行错误: {str(e)}",
+                    "is_error": True,
+                })
+
+        return results
 
     def _parse_tool_output(self,output:str) -> Optional[str]:
         # 解析工具输出
@@ -169,3 +229,4 @@ class ContextBuilder():
 
     def add_message(self,message:Message):
         self.history_message.append(message)
+

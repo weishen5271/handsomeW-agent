@@ -69,7 +69,12 @@ class ContextBuilder():
         skills_summary = self.skill_loader.load_skill_summary()
         if skills_summary:
             parts.append(f"""# Skills
-            The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
+            The following skills extend your capabilities.
+            Preferred flow:
+            1) call list_skills
+            2) call get_skill with skill_name
+            You may still use read_file when needed.
+            When SKILL.md includes terminal commands, execute them with exec_shell (do not just paraphrase).
             Skills with available="false" need dependencies installed first - you can try installing them with apt/brew.
             {skills_summary}""")
 

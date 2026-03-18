@@ -1,7 +1,8 @@
+import asyncio
 import importlib
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 
 from core.llm import MyAgentsLLM
 
@@ -66,3 +67,68 @@ class AgentService:
                 "agent_type": agent_type.value,
             },
         }
+
+    async def run_stream(
+        self,
+        agent_type: AgentType,
+        user_input: str,
+        history: list[ChatMessage] | None = None,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        _ = history
+        _ = temperature
+        _ = max_tokens
+
+        ReactAgent = _load_react_agent_class()
+        react_agent = ReactAgent(
+            name=f"{agent_type.value}-react-runner",
+            llm=self._llm,
+            system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
+        )
+
+        queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+
+        def on_event(event: dict[str, Any]) -> None:
+            queue.put_nowait(event)
+
+        async def runner() -> None:
+            try:
+                result = await react_agent.run(
+                    input_str=user_input,
+                    verbose=False,
+                    event_handler=on_event,
+                )
+                if result is None:
+                    queue.put_nowait(
+                        {
+                            "type": "error",
+                            "data": {
+                                "message": "react_agent returned no result",
+                                "agent_type": agent_type.value,
+                            },
+                        }
+                    )
+            except Exception as exc:
+                queue.put_nowait(
+                    {
+                        "type": "error",
+                        "data": {
+                            "message": str(exc),
+                            "agent_type": agent_type.value,
+                        },
+                    }
+                )
+            finally:
+                queue.put_nowait(None)
+
+        task = asyncio.create_task(runner())
+
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
+
+        await task

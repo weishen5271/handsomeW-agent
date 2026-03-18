@@ -1,4 +1,7 @@
-﻿from fastapi import APIRouter, HTTPException
+import json
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from api.agent_service import AgentService
 from api.schemas import AgentChatRequest, AgentChatResponse, AgentType
@@ -35,3 +38,58 @@ async def chat(agent_type: AgentType, request: AgentChatRequest) -> AgentChatRes
         usage=result["usage"],
         metadata=result["metadata"],
     )
+
+
+def _build_streaming_response(
+    service: AgentService,
+    agent_type: AgentType,
+    request: AgentChatRequest,
+) -> StreamingResponse:
+    async def event_generator():
+        try:
+            async for event in service.run_stream(
+                agent_type=agent_type,
+                user_input=request.input,
+                history=request.history,
+                system_prompt=request.system_prompt,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+            ):
+                event_type = event.get("type", "message")
+                payload = json.dumps(event.get("data", {}), ensure_ascii=False)
+                yield f"event: {event_type}\ndata: {payload}\n\n"
+
+            yield "event: end\ndata: {}\n\n"
+        except ValueError as exc:
+            payload = json.dumps({"message": f"LLM config error: {exc}"}, ensure_ascii=False)
+            yield f"event: error\ndata: {payload}\n\n"
+        except Exception as exc:
+            payload = json.dumps({"message": f"Agent execution failed: {exc}"}, ensure_ascii=False)
+            yield f"event: error\ndata: {payload}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/{agent_type}/chat/stream")
+async def chat_stream(agent_type: AgentType, request: AgentChatRequest) -> StreamingResponse:
+    service = AgentService()
+    return _build_streaming_response(service, agent_type, request)
+
+
+@router.get("/{agent_type}/chat/stream")
+async def chat_stream_get(
+    agent_type: AgentType,
+    input: str,
+    system_prompt: str | None = None,
+) -> StreamingResponse:
+    service = AgentService()
+    request = AgentChatRequest(input=input, system_prompt=system_prompt)
+    return _build_streaming_response(service, agent_type, request)

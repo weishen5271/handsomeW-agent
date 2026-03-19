@@ -32,3 +32,5 @@ Optional environment variables:
 - `APP_HOST` (default: `127.0.0.1`)
 - `APP_PORT` (default: `8000`)
 - `DEBUG` (`true` enables reload)
+- `CORS_ALLOW_ORIGINS` (comma-separated origins, default: `http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000`)
+- `CORS_ALLOW_ORIGIN_REGEX` (optional regex for allowed origins, for example: `^https://.*\.example\.com$`)

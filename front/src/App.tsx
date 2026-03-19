@@ -22,7 +22,8 @@ type StreamEvent = {
   payload: Record<string, unknown>;
 };
 
-const AGENT_API = "/agents/react/chat/stream";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
+const AGENT_API = `${API_BASE_URL}/agents/react/chat/stream`;
 
 function nowTag() {
   return new Date().toLocaleTimeString("zh-CN", {

@@ -1,5 +1,6 @@
-﻿from enum import Enum
-from typing import Any
+from datetime import datetime
+from enum import Enum
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -29,3 +30,37 @@ class AgentChatResponse(BaseModel):
     finish_reason: str
     usage: dict[str, int] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class UserPublic(BaseModel):
+    id: int
+    username: str
+    role: Literal["admin", "user"]
+    created_at: datetime | str
+
+
+class UserRegisterRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=32)
+    password: str = Field(..., min_length=6, max_length=128)
+
+
+class UserLoginRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=32)
+    password: str = Field(..., min_length=6, max_length=128)
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user: UserPublic
+
+
+class UserCreateRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=32)
+    password: str = Field(..., min_length=6, max_length=128)
+    role: Literal["admin", "user"] = "user"
+
+
+class UserUpdateRequest(BaseModel):
+    username: str | None = Field(default=None, min_length=3, max_length=32)
+    password: str | None = Field(default=None, min_length=6, max_length=128)
+    role: Literal["admin", "user"] | None = None

@@ -1,10 +1,11 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 
 from api.agent_service import AgentService
+from api.auth import get_current_user
 from api.schemas import AgentChatRequest, AgentChatResponse, AgentType
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -22,7 +23,11 @@ async def chat_ui() -> FileResponse:
 
 
 @router.post("/{agent_type}/chat", response_model=AgentChatResponse)
-async def chat(agent_type: AgentType, request: AgentChatRequest) -> AgentChatResponse:
+async def chat(
+    agent_type: AgentType,
+    request: AgentChatRequest,
+    _: dict = Depends(get_current_user),
+) -> AgentChatResponse:
     try:
         service = AgentService()
         result = await service.run(
@@ -34,9 +39,9 @@ async def chat(agent_type: AgentType, request: AgentChatRequest) -> AgentChatRes
             max_tokens=request.max_tokens,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=500, detail=f"LLM config error: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"LLM 配置错误：{exc}") from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Agent execution failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"智能体执行失败：{exc}") from exc
 
     return AgentChatResponse(
         agent=agent_type,
@@ -68,10 +73,10 @@ def _build_streaming_response(
 
             yield "event: end\ndata: {}\n\n"
         except ValueError as exc:
-            payload = json.dumps({"message": f"LLM config error: {exc}"}, ensure_ascii=False)
+            payload = json.dumps({"message": f"LLM 配置错误：{exc}"}, ensure_ascii=False)
             yield f"event: error\ndata: {payload}\n\n"
         except Exception as exc:
-            payload = json.dumps({"message": f"Agent execution failed: {exc}"}, ensure_ascii=False)
+            payload = json.dumps({"message": f"智能体执行失败：{exc}"}, ensure_ascii=False)
             yield f"event: error\ndata: {payload}\n\n"
 
     return StreamingResponse(
@@ -86,7 +91,11 @@ def _build_streaming_response(
 
 
 @router.post("/{agent_type}/chat/stream")
-async def chat_stream(agent_type: AgentType, request: AgentChatRequest) -> StreamingResponse:
+async def chat_stream(
+    agent_type: AgentType,
+    request: AgentChatRequest,
+    _: dict = Depends(get_current_user),
+) -> StreamingResponse:
     service = AgentService()
     return _build_streaming_response(service, agent_type, request)
 
@@ -96,6 +105,7 @@ async def chat_stream_get(
     agent_type: AgentType,
     input: str,
     system_prompt: str | None = None,
+    _: dict = Depends(get_current_user),
 ) -> StreamingResponse:
     service = AgentService()
     request = AgentChatRequest(input=input, system_prompt=system_prompt)

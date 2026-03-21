@@ -74,7 +74,7 @@ class ReactAgent(BaseAgent):
                 tools=self.context.get_tool_definitions(),
             )
             if llm_response is None:
-                self._emit_event(event_handler, "error", {"message": "llm_response is None"})
+                self._emit_event(event_handler, "error", {"message": "模型未返回结果"})
                 return None
 
             if verbose:

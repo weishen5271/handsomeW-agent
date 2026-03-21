@@ -6,7 +6,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+from api.auth import router as auth_router
 from api.routes import router as agent_router
+from api.user_store import init_db
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -39,6 +41,12 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.on_event("startup")
+async def startup() -> None:
+    init_db()
+
+
+app.include_router(auth_router)
 app.include_router(agent_router)
 
 

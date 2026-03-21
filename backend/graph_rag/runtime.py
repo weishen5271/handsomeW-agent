@@ -76,6 +76,17 @@ class GraphRAGRuntime:
             config=self.config,
         )
 
+    def _use_llm_client(self, llm_client: MyAgentsLLM) -> None:
+        self.llm_client = llm_client
+        if self.traditional_retrieval:
+            self.traditional_retrieval.llm_client = llm_client
+            if hasattr(self.traditional_retrieval, "graph_indexing"):
+                self.traditional_retrieval.graph_indexing.llm_client = llm_client
+        if self.graph_rag_retrieval:
+            self.graph_rag_retrieval.llm_client = llm_client
+        if self.query_router:
+            self.query_router.llm_client = llm_client
+
     def _build_knowledge_base(self):
         assert self.data_module and self.index_module and self.traditional_retrieval and self.graph_rag_retrieval
 
@@ -102,10 +113,18 @@ class GraphRAGRuntime:
         self.traditional_retrieval.initialize(chunks)
         self.graph_rag_retrieval.initialize()
 
-    def query(self, question: str, top_k: int | None = None) -> RuntimeQueryResult:
+    def query(
+        self,
+        question: str,
+        top_k: int | None = None,
+        llm_client: MyAgentsLLM | None = None,
+    ) -> RuntimeQueryResult:
         self.ensure_ready()
         assert self.query_router and self.traditional_retrieval
         k = top_k or self.config.top_k
+        if llm_client is not None:
+            with self._lock:
+                self._use_llm_client(llm_client)
 
         documents, analysis = self.query_router.route_query(question, k)
         if not documents:

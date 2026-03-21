@@ -61,6 +61,7 @@ class AgentService:
             user_input=user_input,
             system_prompt=system_prompt,
             enable_rag=enable_rag,
+            llm=llm,
         )
 
         ReactAgent = _load_react_agent_class()
@@ -114,6 +115,7 @@ class AgentService:
             user_input=user_input,
             system_prompt=system_prompt,
             enable_rag=enable_rag,
+            llm=llm,
         )
 
         ReactAgent = _load_react_agent_class()
@@ -179,12 +181,13 @@ class AgentService:
         user_input: str,
         system_prompt: str | None,
         enable_rag: bool,
+        llm: MyAgentsLLM,
     ) -> tuple[str, dict[str, Any]]:
         base_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
         if not enable_rag:
             return base_prompt, {"enabled": False, "reason": "disabled_by_request"}
 
-        rag_result = self.graph_rag_bridge.build_context(user_input)
+        rag_result = self.graph_rag_bridge.build_context(user_input, llm_client=llm)
         rag_meta = rag_result.metadata
         if not rag_result.context_text:
             return base_prompt, rag_meta

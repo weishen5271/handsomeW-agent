@@ -3,6 +3,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from core.llm import MyAgentsLLM
+
 try:
     from graph_rag import get_graph_rag_runtime
 except ModuleNotFoundError:
@@ -31,12 +33,12 @@ class GraphRAGBridge:
         except Exception:
             return False
 
-    def build_context(self, query: str) -> RAGContextResult:
+    def build_context(self, query: str, llm_client: MyAgentsLLM | None = None) -> RAGContextResult:
         if not query.strip():
             return RAGContextResult(context_text="", metadata={"enabled": False, "reason": "empty_query"})
 
         try:
-            result = self.runtime.query(query)
+            result = self.runtime.query(query, llm_client=llm_client)
             docs = result.documents
             analysis = result.analysis
             context_text = self._format_context(docs)

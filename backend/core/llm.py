@@ -2,7 +2,7 @@ import json
 import os
 from typing import Any, Iterator, Literal, Optional
 
-from litellm import acompletion
+from litellm import acompletion, completion
 from openai import OpenAI
 
 from core.base import LLMResponse, ToolCallRequest
@@ -231,6 +231,94 @@ class MyAgentsLLM:
         temperature: float = 0.7,
         **kwargs,
     ) -> LLMResponse | None:
+        payload = self._build_payload(
+            messages=messages,
+            tools=tools,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            **kwargs,
+        )
+
+        try:
+            response = await acompletion(**payload)
+            return self._parse_response(response)
+        except Exception as e:
+            # Fallback for provider/model routing mismatches on OpenAI-compatible endpoints.
+            fallback_payload = dict(payload)
+            model_name = str(fallback_payload.get("model", ""))
+            should_retry = False
+
+            if "custom_llm_provider" in fallback_payload:
+                fallback_payload.pop("custom_llm_provider", None)
+                should_retry = True
+
+            if model_name.startswith("dashscope/"):
+                fallback_payload["model"] = model_name.split("/", 1)[1]
+                should_retry = True
+
+            if should_retry:
+                try:
+                    response = await acompletion(**fallback_payload)
+                    return self._parse_response(response)
+                except Exception:
+                    pass
+
+            print(f"Error calling LLM API: {e}")
+            raise
+
+    def invoke_blocking(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        **kwargs,
+    ) -> LLMResponse:
+        normalized_messages = self._normalize_messages(messages)
+        payload = self._build_payload(
+            messages=normalized_messages,
+            tools=tools,
+            model=model,
+            max_tokens=max_tokens or self.max_tokens or 4096,
+            temperature=temperature if temperature is not None else self.temperature,
+            **kwargs,
+        )
+        try:
+            response = completion(**payload)
+            return self._parse_response(response)
+        except Exception as e:
+            fallback_payload = dict(payload)
+            model_name = str(fallback_payload.get("model", ""))
+            should_retry = False
+
+            if "custom_llm_provider" in fallback_payload:
+                fallback_payload.pop("custom_llm_provider", None)
+                should_retry = True
+
+            if model_name.startswith("dashscope/"):
+                fallback_payload["model"] = model_name.split("/", 1)[1]
+                should_retry = True
+
+            if should_retry:
+                try:
+                    response = completion(**fallback_payload)
+                    return self._parse_response(response)
+                except Exception:
+                    pass
+
+            raise Exception(f"LLM blocking call failed: {str(e)}")
+
+    def _build_payload(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        **kwargs,
+    ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": model or self.model,
             "messages": messages,
@@ -267,33 +355,7 @@ class MyAgentsLLM:
             payload["tool_choice"] = "auto"
 
         payload.update(kwargs)
-
-        try:
-            response = await acompletion(**payload)
-            return self._parse_response(response)
-        except Exception as e:
-            # Fallback for provider/model routing mismatches on OpenAI-compatible endpoints.
-            fallback_payload = dict(payload)
-            model_name = str(fallback_payload.get("model", ""))
-            should_retry = False
-
-            if "custom_llm_provider" in fallback_payload:
-                fallback_payload.pop("custom_llm_provider", None)
-                should_retry = True
-
-            if model_name.startswith("dashscope/"):
-                fallback_payload["model"] = model_name.split("/", 1)[1]
-                should_retry = True
-
-            if should_retry:
-                try:
-                    response = await acompletion(**fallback_payload)
-                    return self._parse_response(response)
-                except Exception:
-                    pass
-
-            print(f"Error calling LLM API: {e}")
-            raise
+        return payload
 
     def _parse_response(self, response: Any) -> LLMResponse:
         choice = response.choices[0]

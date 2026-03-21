@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from sqlite3 import IntegrityError
+from psycopg import IntegrityError
 
 from api.schemas import (
     AuthResponse,

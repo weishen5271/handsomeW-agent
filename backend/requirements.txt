@@ -2,5 +2,13 @@
 uvicorn[standard]>=0.32.0
 python-dotenv>=1.0.1
 pydantic>=2.9.0
+psycopg[binary]>=3.2.0
 openai>=1.51.0
 litellm>=1.51.0
+neo4j>=5.0.0
+pymilvus==2.5.11
+langchain-core==0.3.71
+langchain-community==0.3.27
+langchain-huggingface==0.3.1
+rank-bm25>=0.2.2
+sentence-transformers>=3.0.0

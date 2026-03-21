@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Activity,
+  Box,
   Bot,
   Database,
   Image,
@@ -21,10 +22,12 @@ import {
 import AlarmsPanel from "./components/AlarmsPanel";
 import DashboardPanel from "./components/DashboardPanel";
 import DigitalAssetsPanel from "./components/DigitalAssetsPanel";
+import type { DigitalAsset } from "./components/DigitalAssetsPanel";
+import Scene3DPanel from "./components/Scene3DPanel";
 import SystemStatusPanel from "./components/SystemStatusPanel";
 
 type ChatRole = "user" | "assistant";
-type ViewMode = "dashboard" | "chat" | "assets" | "alarms" | "status" | "users" | "llm";
+type ViewMode = "dashboard" | "chat" | "assets" | "scene3d" | "alarms" | "status" | "users" | "llm";
 type AuthMode = "login" | "register";
 type UserRole = "admin" | "user";
 
@@ -211,6 +214,7 @@ export default function App() {
   const [authError, setAuthError] = useState("");
 
   const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
+  const [selectedAsset, setSelectedAsset] = useState<DigitalAsset | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streamState, setStreamState] = useState<StreamState>({ loading: false, label: null });
@@ -771,6 +775,17 @@ export default function App() {
             </button>
             <button
               className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
+                viewMode === "scene3d"
+                  ? "bg-blue-50 font-semibold text-blue-600"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+              type="button"
+              onClick={() => setViewMode("scene3d")}
+            >
+              <Box size={18} /> 三维场景
+            </button>
+            <button
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
                 viewMode === "alarms"
                   ? "bg-blue-50 font-semibold text-blue-600"
                   : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
@@ -837,6 +852,8 @@ export default function App() {
                   ? "RCA 助手"
                   : viewMode === "assets"
                     ? "数字资产"
+                    : viewMode === "scene3d"
+                      ? "三维场景"
                     : viewMode === "alarms"
                       ? "告警中心"
                       : viewMode === "status"
@@ -855,7 +872,14 @@ export default function App() {
             {viewMode === "dashboard" ? (
               <DashboardPanel />
             ) : viewMode === "assets" ? (
-              <DigitalAssetsPanel />
+              <DigitalAssetsPanel
+                onOpenModelScene={(asset) => {
+                  setSelectedAsset(asset);
+                  setViewMode("scene3d");
+                }}
+              />
+            ) : viewMode === "scene3d" ? (
+              <Scene3DPanel asset={selectedAsset} onBackToAssets={() => setViewMode("assets")} />
             ) : viewMode === "alarms" ? (
               <AlarmsPanel />
             ) : viewMode === "status" ? (

@@ -1,14 +1,68 @@
-import { Box, Cpu, Database, Filter, MoreVertical, Search } from "lucide-react";
+import { Box, Cpu, Database, Filter, Search } from "lucide-react";
 
-const assets = [
-  { id: "M-102", name: "主电机", type: "动力设备", status: "Warning", location: "2号生产线", health: 68 },
-  { id: "C-201", name: "输送带控制器", type: "控制单元", status: "Normal", location: "2号生产线", health: 98 },
-  { id: "S-05", name: "振动传感器", type: "传感器", status: "Normal", location: "1号生产线", health: 95 },
-  { id: "H-22", name: "液压单元", type: "动力设备", status: "Critical", location: "3号生产线", health: 32 },
-  { id: "G-04", name: "工业网关", type: "通信设备", status: "Normal", location: "全厂区", health: 88 },
+export type DigitalAsset = {
+  id: string;
+  name: string;
+  type: string;
+  status: "Normal" | "Warning" | "Critical";
+  location: string;
+  health: number;
+  modelFile: string;
+};
+
+export const assets: DigitalAsset[] = [
+  {
+    id: "M-102",
+    name: "主电机",
+    type: "动力设备",
+    status: "Warning",
+    location: "2号生产线",
+    health: 68,
+    modelFile: "motor_main.glb",
+  },
+  {
+    id: "C-201",
+    name: "输送带控制器",
+    type: "控制单元",
+    status: "Normal",
+    location: "2号生产线",
+    health: 98,
+    modelFile: "belt_controller.glb",
+  },
+  {
+    id: "S-05",
+    name: "振动传感器",
+    type: "传感器",
+    status: "Normal",
+    location: "1号生产线",
+    health: 95,
+    modelFile: "vibration_sensor.glb",
+  },
+  {
+    id: "H-22",
+    name: "液压单元",
+    type: "动力设备",
+    status: "Critical",
+    location: "3号生产线",
+    health: 32,
+    modelFile: "hydraulic_unit.glb",
+  },
+  {
+    id: "G-04",
+    name: "工业网关",
+    type: "通信设备",
+    status: "Normal",
+    location: "全厂区",
+    health: 88,
+    modelFile: "industrial_gateway.glb",
+  },
 ];
 
-export default function DigitalAssetsPanel() {
+type DigitalAssetsPanelProps = {
+  onOpenModelScene: (asset: DigitalAsset) => void;
+};
+
+export default function DigitalAssetsPanel({ onOpenModelScene }: DigitalAssetsPanelProps) {
   return (
     <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
       <header className="mb-6 flex items-center justify-between">
@@ -87,8 +141,12 @@ export default function DigitalAssetsPanel() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <button className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
-                    <MoreVertical size={16} />
+                  <button
+                    type="button"
+                    onClick={() => onOpenModelScene(asset)}
+                    className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+                  >
+                    模型漫游
                   </button>
                 </td>
               </tr>

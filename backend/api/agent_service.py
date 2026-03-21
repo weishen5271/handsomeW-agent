@@ -8,9 +8,11 @@ from core.llm import MyAgentsLLM
 
 from api.schemas import AgentType, ChatMessage
 from api.user_store import get_user_llm_config
+from rag import GraphRAGBridge
 
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful ReAct assistant."
+_graph_rag_bridge = GraphRAGBridge()
 
 
 def _load_react_agent_class():
@@ -25,7 +27,7 @@ def _load_react_agent_class():
 
 class AgentService:
     def __init__(self) -> None:
-        pass
+        self.graph_rag_bridge = _graph_rag_bridge
 
     def _build_llm(self, user_id: int) -> MyAgentsLLM:
         config = get_user_llm_config(user_id)
@@ -46,6 +48,7 @@ class AgentService:
         user_input: str,
         history: list[ChatMessage] | None = None,
         system_prompt: str | None = None,
+        enable_rag: bool = True,
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> dict[str, Any]:
@@ -54,11 +57,17 @@ class AgentService:
         _ = max_tokens
         llm = self._build_llm(user_id)
 
+        effective_system_prompt, rag_meta = self._build_prompt_with_rag(
+            user_input=user_input,
+            system_prompt=system_prompt,
+            enable_rag=enable_rag,
+        )
+
         ReactAgent = _load_react_agent_class()
         react_agent = ReactAgent(
             name=f"{agent_type.value}-react-runner",
             llm=llm,
-            system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
+            system_prompt=effective_system_prompt,
         )
         result = await react_agent.run(input_str=user_input, verbose=False)
 
@@ -70,6 +79,7 @@ class AgentService:
                 "metadata": {
                     "runner": "react_agent.run",
                     "agent_type": agent_type.value,
+                    "rag": rag_meta,
                 },
             }
 
@@ -80,6 +90,7 @@ class AgentService:
             "metadata": {
                 "runner": "react_agent.run",
                 "agent_type": agent_type.value,
+                "rag": rag_meta,
             },
         }
 
@@ -90,6 +101,7 @@ class AgentService:
         user_input: str,
         history: list[ChatMessage] | None = None,
         system_prompt: str | None = None,
+        enable_rag: bool = True,
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
@@ -98,11 +110,17 @@ class AgentService:
         _ = max_tokens
         llm = self._build_llm(user_id)
 
+        effective_system_prompt, rag_meta = self._build_prompt_with_rag(
+            user_input=user_input,
+            system_prompt=system_prompt,
+            enable_rag=enable_rag,
+        )
+
         ReactAgent = _load_react_agent_class()
         react_agent = ReactAgent(
             name=f"{agent_type.value}-react-runner",
             llm=llm,
-            system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
+            system_prompt=effective_system_prompt,
         )
 
         queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
@@ -112,6 +130,12 @@ class AgentService:
 
         async def runner() -> None:
             try:
+                queue.put_nowait(
+                    {
+                        "type": "rag_context",
+                        "data": rag_meta,
+                    }
+                )
                 result = await react_agent.run(
                     input_str=user_input,
                     verbose=False,
@@ -149,3 +173,26 @@ class AgentService:
             yield item
 
         await task
+
+    def _build_prompt_with_rag(
+        self,
+        user_input: str,
+        system_prompt: str | None,
+        enable_rag: bool,
+    ) -> tuple[str, dict[str, Any]]:
+        base_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
+        if not enable_rag:
+            return base_prompt, {"enabled": False, "reason": "disabled_by_request"}
+
+        rag_result = self.graph_rag_bridge.build_context(user_input)
+        rag_meta = rag_result.metadata
+        if not rag_result.context_text:
+            return base_prompt, rag_meta
+
+        enhanced_prompt = (
+            f"{base_prompt}\n\n"
+            "You are connected to an external GraphRAG knowledge context.\n"
+            "When relevant, prioritize the retrieved evidence below and avoid hallucinations.\n\n"
+            f"{rag_result.context_text}"
+        )
+        return enhanced_prompt, rag_meta

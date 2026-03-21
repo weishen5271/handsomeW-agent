@@ -1,12 +1,12 @@
 import hashlib
 import os
 import secrets
-import sqlite3
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
-DB_PATH = Path(__file__).resolve().parents[1] / "data" / "app.db"
+import psycopg
+from psycopg.rows import dict_row
+
 SESSION_TTL_DAYS = 7
 PBKDF2_ROUNDS = 120_000
 
@@ -15,15 +15,11 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _to_iso(ts: datetime) -> str:
-    return ts.isoformat()
-
-
-def _connect() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _connect() -> psycopg.Connection:
+    db_dsn = os.getenv("DATABASE_URL")
+    if not db_dsn:
+        raise RuntimeError("缺少 DATABASE_URL 环境变量，请在 backend/.env 中配置 PostgreSQL 连接串")
+    return psycopg.connect(db_dsn, row_factory=dict_row)
 
 
 def init_db() -> None:
@@ -31,12 +27,12 @@ def init_db() -> None:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id BIGSERIAL PRIMARY KEY,
                 username TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 salt TEXT NOT NULL,
                 role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
-                created_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL
             )
             """
         )
@@ -44,28 +40,26 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS sessions (
                 token TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                FOREIGN KEY(user_id) REFERENCES users(id)
+                user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at TIMESTAMPTZ NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL
             )
             """
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_llm_configs (
-                user_id INTEGER PRIMARY KEY,
+                user_id BIGINT PRIMARY KEY,
                 provider TEXT NOT NULL,
                 model TEXT NOT NULL,
                 base_url TEXT NOT NULL,
                 api_key TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             )
             """
         )
-        conn.commit()
 
 
 def _hash_password(password: str, salt_hex: str) -> str:
@@ -78,7 +72,7 @@ def _hash_password(password: str, salt_hex: str) -> str:
     return hashed.hex()
 
 
-def _public_user(row: sqlite3.Row) -> dict[str, Any]:
+def _public_user(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": row["id"],
         "username": row["username"],
@@ -87,8 +81,8 @@ def _public_user(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def _cleanup_expired_sessions(conn: sqlite3.Connection) -> None:
-    conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (_to_iso(_utc_now()),))
+def _cleanup_expired_sessions(conn: psycopg.Connection) -> None:
+    conn.execute("DELETE FROM sessions WHERE expires_at <= %s", (_utc_now(),))
 
 
 def count_users() -> int:
@@ -99,7 +93,7 @@ def count_users() -> int:
 
 def get_user_by_username(username: str) -> dict[str, Any] | None:
     with _connect() as conn:
-        row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        row = conn.execute("SELECT * FROM users WHERE username = %s", (username,)).fetchone()
         if row is None:
             return None
         return dict(row)
@@ -107,7 +101,7 @@ def get_user_by_username(username: str) -> dict[str, Any] | None:
 
 def get_user_by_id(user_id: int) -> dict[str, Any] | None:
     with _connect() as conn:
-        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
         if row is None:
             return None
         return dict(row)
@@ -116,15 +110,17 @@ def get_user_by_id(user_id: int) -> dict[str, Any] | None:
 def create_user(username: str, password: str, role: str = "user") -> dict[str, Any]:
     salt = os.urandom(16).hex()
     password_hash = _hash_password(password, salt)
-    now = _to_iso(_utc_now())
+    now = _utc_now()
 
     with _connect() as conn:
-        cursor = conn.execute(
-            "INSERT INTO users(username, password_hash, salt, role, created_at) VALUES (?, ?, ?, ?, ?)",
+        row = conn.execute(
+            """
+            INSERT INTO users(username, password_hash, salt, role, created_at)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, username, role, created_at
+            """,
             (username, password_hash, salt, role, now),
-        )
-        conn.commit()
-        row = conn.execute("SELECT * FROM users WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        ).fetchone()
         return _public_user(row)
 
 
@@ -158,18 +154,16 @@ def create_session(user_id: int) -> str:
     with _connect() as conn:
         _cleanup_expired_sessions(conn)
         conn.execute(
-            "INSERT INTO sessions(token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-            (token, user_id, _to_iso(now), _to_iso(expires)),
+            "INSERT INTO sessions(token, user_id, created_at, expires_at) VALUES (%s, %s, %s, %s)",
+            (token, user_id, now, expires),
         )
-        conn.commit()
 
     return token
 
 
 def revoke_session(token: str) -> None:
     with _connect() as conn:
-        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
-        conn.commit()
+        conn.execute("DELETE FROM sessions WHERE token = %s", (token,))
 
 
 def get_user_by_token(token: str) -> dict[str, Any] | None:
@@ -180,11 +174,10 @@ def get_user_by_token(token: str) -> dict[str, Any] | None:
             SELECT u.id, u.username, u.role, u.created_at
             FROM sessions s
             JOIN users u ON u.id = s.user_id
-            WHERE s.token = ?
+            WHERE s.token = %s
             """,
             (token,),
         ).fetchone()
-        conn.commit()
 
         if row is None:
             return None
@@ -207,7 +200,7 @@ def update_user(
     password: str | None = None,
 ) -> dict[str, Any] | None:
     with _connect() as conn:
-        current = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        current = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
         if current is None:
             return None
 
@@ -223,23 +216,21 @@ def update_user(
         conn.execute(
             """
             UPDATE users
-            SET username = ?, role = ?, password_hash = ?, salt = ?
-            WHERE id = ?
+            SET username = %s, role = %s, password_hash = %s, salt = %s
+            WHERE id = %s
             """,
             (next_username, next_role, next_hash, next_salt, user_id),
         )
-        conn.commit()
 
-        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
         return _public_user(row)
 
 
 def delete_user(user_id: int) -> bool:
     with _connect() as conn:
-        conn.execute("DELETE FROM user_llm_configs WHERE user_id = ?", (user_id,))
-        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
-        cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-        conn.commit()
+        conn.execute("DELETE FROM user_llm_configs WHERE user_id = %s", (user_id,))
+        conn.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
+        cursor = conn.execute("DELETE FROM users WHERE id = %s", (user_id,))
         return cursor.rowcount > 0
 
 
@@ -249,7 +240,7 @@ def get_user_llm_config(user_id: int) -> dict[str, Any] | None:
             """
             SELECT user_id, provider, model, base_url, api_key, created_at, updated_at
             FROM user_llm_configs
-            WHERE user_id = ?
+            WHERE user_id = %s
             """,
             (user_id,),
         ).fetchone()
@@ -265,10 +256,10 @@ def upsert_user_llm_config(
     base_url: str,
     api_key: str | None,
 ) -> dict[str, Any]:
-    now = _to_iso(_utc_now())
+    now = _utc_now()
     with _connect() as conn:
         existing = conn.execute(
-            "SELECT api_key, created_at FROM user_llm_configs WHERE user_id = ?",
+            "SELECT api_key, created_at FROM user_llm_configs WHERE user_id = %s",
             (user_id,),
         ).fetchone()
 
@@ -281,8 +272,8 @@ def upsert_user_llm_config(
             conn.execute(
                 """
                 UPDATE user_llm_configs
-                SET provider = ?, model = ?, base_url = ?, api_key = ?, updated_at = ?
-                WHERE user_id = ?
+                SET provider = %s, model = %s, base_url = %s, api_key = %s, updated_at = %s
+                WHERE user_id = %s
                 """,
                 (provider, model, base_url, final_api_key, now, user_id),
             )
@@ -290,11 +281,10 @@ def upsert_user_llm_config(
             conn.execute(
                 """
                 INSERT INTO user_llm_configs(user_id, provider, model, base_url, api_key, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
                 (user_id, provider, model, base_url, final_api_key, created_at, now),
             )
-        conn.commit()
 
     row = get_user_llm_config(user_id)
     if row is None:

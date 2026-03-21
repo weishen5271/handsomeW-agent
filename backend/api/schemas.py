@@ -20,6 +20,7 @@ class AgentChatRequest(BaseModel):
     input: str = Field(..., min_length=1, description="User input")
     history: list[ChatMessage] = Field(default_factory=list, description="Chat history")
     system_prompt: str | None = Field(default=None, description="Optional system prompt")
+    enable_rag: bool = Field(default=True, description="Enable GraphRAG context enhancement")
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1)
 

@@ -36,6 +36,7 @@ async def chat(
             user_input=request.input,
             history=request.history,
             system_prompt=request.system_prompt,
+            enable_rag=request.enable_rag,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
         )
@@ -67,6 +68,7 @@ def _build_streaming_response(
                 user_input=request.input,
                 history=request.history,
                 system_prompt=request.system_prompt,
+                enable_rag=request.enable_rag,
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
             ):

@@ -1,21 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  Activity,
   Bot,
+  Database,
   Image,
+  LayoutDashboard,
   Loader2,
   LogOut,
+  MessageSquare,
   Send,
   Settings,
   Shield,
+  ShieldAlert,
   Sparkles,
   Trash2,
   User,
   UserPlus,
 } from "lucide-react";
+import AlarmsPanel from "./components/AlarmsPanel";
+import DashboardPanel from "./components/DashboardPanel";
+import DigitalAssetsPanel from "./components/DigitalAssetsPanel";
+import SystemStatusPanel from "./components/SystemStatusPanel";
 
 type ChatRole = "user" | "assistant";
-type ViewMode = "chat" | "users" | "llm";
+type ViewMode = "dashboard" | "chat" | "assets" | "alarms" | "status" | "users" | "llm";
 type AuthMode = "login" | "register";
 type UserRole = "admin" | "user";
 
@@ -201,7 +210,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
 
-  const [viewMode, setViewMode] = useState<ViewMode>("chat");
+  const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streamState, setStreamState] = useState<StreamState>({ loading: false, label: null });
@@ -252,7 +261,7 @@ export default function App() {
     setToken("");
     setCurrentUser(null);
     localStorage.removeItem(TOKEN_KEY);
-    setViewMode("chat");
+    setViewMode("dashboard");
     setUsers([]);
     setLlmProvider("openai");
     setLlmModel("gpt-4o-mini");
@@ -624,10 +633,10 @@ export default function App() {
 
   if (bootLoading) {
     return (
-      <main className="min-h-screen bg-luminaBg px-4 py-6 text-[16px] font-medium text-luminaText">
-        <div className="mx-auto flex h-[calc(100vh-3rem)] w-full max-w-5xl items-center justify-center rounded-3xl border border-black/5 bg-white/40 p-6 shadow-soft backdrop-blur-sm">
-          <div className="inline-flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-4 py-3">
-            <Loader2 size={16} className="animate-spin" />
+      <main className="min-h-screen bg-slate-50 px-4 py-6 text-[16px] font-medium text-slate-800">
+        <div className="mx-auto flex h-[calc(100vh-3rem)] w-full max-w-5xl items-center justify-center rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-soft backdrop-blur-sm">
+          <div className="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-600">
+            <Loader2 size={16} className="animate-spin text-blue-600" />
             <p>正在恢复登录状态...</p>
           </div>
         </div>
@@ -637,24 +646,24 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <main className="min-h-screen bg-luminaBg px-4 py-6 text-[16px] font-medium text-luminaText">
-        <div className="mx-auto flex h-[calc(100vh-3rem)] w-full max-w-5xl items-center justify-center rounded-3xl border border-black/5 bg-white/40 p-6 shadow-soft backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl border border-black/5 bg-white p-6 shadow-sm">
+      <main className="min-h-screen bg-slate-50 px-4 py-6 text-[16px] font-medium text-slate-800">
+        <div className="mx-auto flex h-[calc(100vh-3rem)] w-full max-w-5xl items-center justify-center rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-soft backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-6 flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black text-white">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white">
                 <Sparkles size={18} />
               </span>
               <div>
-                <h1 className="font-title text-2xl font-bold leading-tight">Lumina</h1>
-                <p className="text-[11px] font-bold tracking-widest text-black/30">用户登录中心</p>
+                <h1 className="font-title text-2xl font-bold leading-tight text-slate-800">TwinMind</h1>
+                <p className="text-[11px] font-bold tracking-widest text-slate-400">用户登录中心</p>
               </div>
             </div>
 
-            <div className="mb-4 grid grid-cols-2 gap-2 rounded-2xl bg-black/5 p-1">
+            <div className="mb-4 grid grid-cols-2 gap-2 rounded-2xl bg-blue-50 p-1">
               <button
                 type="button"
                 className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
-                  authMode === "login" ? "bg-white shadow-sm" : "text-black/60"
+                  authMode === "login" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"
                 }`}
                 onClick={() => setAuthMode("login")}
               >
@@ -663,7 +672,7 @@ export default function App() {
               <button
                 type="button"
                 className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
-                  authMode === "register" ? "bg-white shadow-sm" : "text-black/60"
+                  authMode === "register" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"
                 }`}
                 onClick={() => setAuthMode("register")}
               >
@@ -673,14 +682,14 @@ export default function App() {
 
             <div className="space-y-3">
               <input
-                className="h-11 w-full rounded-2xl border border-black/10 bg-white/70 px-4 text-[15px] outline-none transition-colors placeholder:text-black/35 focus:border-black/30"
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-[15px] text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                 placeholder="用户名（3-32 位）"
                 value={authUsername}
                 onChange={(e) => setAuthUsername(e.target.value)}
               />
               <input
                 type="password"
-                className="h-11 w-full rounded-2xl border border-black/10 bg-white/70 px-4 text-[15px] outline-none transition-colors placeholder:text-black/35 focus:border-black/30"
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-[15px] text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                 placeholder="密码（至少 6 位）"
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
@@ -688,7 +697,7 @@ export default function App() {
               {authMode === "register" && (
                 <input
                   type="password"
-                  className="h-11 w-full rounded-2xl border border-black/10 bg-white/70 px-4 text-[15px] outline-none transition-colors placeholder:text-black/35 focus:border-black/30"
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-[15px] text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                   placeholder="确认密码"
                   value={authConfirm}
                   onChange={(e) => setAuthConfirm(e.target.value)}
@@ -700,7 +709,7 @@ export default function App() {
 
             <button
               type="button"
-              className="mt-4 flex h-11 w-full items-center justify-center rounded-2xl bg-black text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:bg-black/40"
+              className="mt-4 flex h-11 w-full items-center justify-center rounded-2xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
               disabled={authLoading}
               onClick={() => void submitAuth()}
             >
@@ -713,87 +722,174 @@ export default function App() {
   }
 
   return (
-    <main className="min-h-screen bg-luminaBg px-4 py-6 text-[16px] font-medium text-luminaText">
-      <div className="mx-auto flex h-[calc(100vh-3rem)] w-full max-w-5xl flex-col rounded-3xl border border-black/5 bg-white/40 p-4 shadow-soft backdrop-blur-sm md:p-6">
-        <header className="mb-4 flex items-center justify-between border-b border-black/5 pb-4">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black text-white">
+    <main className="min-h-screen bg-slate-50 px-4 py-6 text-[16px] font-medium text-slate-900">
+      <div className="mx-auto flex h-[calc(100vh-3rem)] w-full max-w-7xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft">
+        <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
+          <div className="flex items-center gap-3 p-6">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200">
               <Sparkles size={18} />
             </span>
             <div>
-              <h1 className="font-title text-2xl font-bold leading-tight">Lumina</h1>
-              <p className="text-[11px] font-bold tracking-widest text-black/30">神经网络助手</p>
+              <h1 className="font-title text-xl font-bold tracking-tight text-slate-800">TwinMind</h1>
+              <p className="text-[11px] font-bold tracking-widest text-slate-400">RCA Assistant</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 text-sm font-medium">
-            <span className="hidden rounded-xl border border-black/10 bg-white px-3 py-1.5 text-[12px] text-black/70 md:inline-flex">
-              <Shield size={14} className="mr-1" />
-              {currentUser.username} ({currentUser.role})
-            </span>
+          <nav className="flex-1 space-y-1 px-4 pb-4">
             <button
-              className={`text-black/60 transition hover:text-black ${viewMode === "chat" ? "text-black" : ""}`}
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
+                viewMode === "dashboard"
+                  ? "bg-blue-50 font-semibold text-blue-600"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+              type="button"
+              onClick={() => setViewMode("dashboard")}
+            >
+              <LayoutDashboard size={18} /> 仪表盘
+            </button>
+            <button
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
+                viewMode === "chat"
+                  ? "bg-blue-50 font-semibold text-blue-600"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+              }`}
               type="button"
               onClick={() => setViewMode("chat")}
             >
-              聊天
+              <MessageSquare size={18} /> RCA 助手
             </button>
             <button
-              className={`inline-flex items-center gap-1 text-black/60 transition hover:text-black ${
-                viewMode === "llm" ? "text-black" : ""
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
+                viewMode === "assets"
+                  ? "bg-blue-50 font-semibold text-blue-600"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+              type="button"
+              onClick={() => setViewMode("assets")}
+            >
+              <Database size={18} /> 数字资产
+            </button>
+            <button
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
+                viewMode === "alarms"
+                  ? "bg-blue-50 font-semibold text-blue-600"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+              type="button"
+              onClick={() => setViewMode("alarms")}
+            >
+              <ShieldAlert size={18} /> 告警中心
+            </button>
+            <button
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
+                viewMode === "status"
+                  ? "bg-blue-50 font-semibold text-blue-600"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+              type="button"
+              onClick={() => setViewMode("status")}
+            >
+              <Activity size={18} /> 系统状态
+            </button>
+            <button
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
+                viewMode === "llm"
+                  ? "bg-blue-50 font-semibold text-blue-600"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
               }`}
               type="button"
               onClick={() => setViewMode("llm")}
             >
-              <Settings size={14} /> 模型配置
+              <Settings size={18} /> 模型配置
             </button>
             {isAdmin && (
               <button
-                className={`inline-flex items-center gap-1 text-black/60 transition hover:text-black ${
-                  viewMode === "users" ? "text-black" : ""
+                className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
+                  viewMode === "users"
+                    ? "bg-blue-50 font-semibold text-blue-600"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
                 }`}
                 type="button"
                 onClick={() => setViewMode("users")}
               >
-                <Settings size={14} /> 用户管理
+                <Shield size={18} /> 用户管理
               </button>
             )}
-            <button className="inline-flex items-center gap-1 text-black/60 transition hover:text-black" type="button" onClick={() => void logout()}>
-              <LogOut size={14} /> 退出
+          </nav>
+
+          <div className="border-t border-slate-100 p-4">
+            <button
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+              type="button"
+              onClick={() => void logout()}
+            >
+              <LogOut size={14} /> 退出登录
             </button>
           </div>
-        </header>
+        </aside>
 
-        {viewMode === "llm" ? (
-          <section className="flex-1 overflow-y-auto pr-1">
-            <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 font-title text-xl font-bold">我的模型 API 配置</h2>
-              <p className="mb-4 text-sm text-black/60">每个账号独立保存，聊天请求会优先使用当前账号配置。</p>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <h2 className="font-title text-lg font-bold text-slate-800">
+              {viewMode === "dashboard"
+                ? "系统概览"
+                : viewMode === "chat"
+                  ? "RCA 助手"
+                  : viewMode === "assets"
+                    ? "数字资产"
+                    : viewMode === "alarms"
+                      ? "告警中心"
+                      : viewMode === "status"
+                        ? "系统状态"
+                        : viewMode === "llm"
+                          ? "模型配置"
+                          : "用户管理"}
+            </h2>
+            <span className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+              <Shield size={14} className="mr-1" />
+              {currentUser.username} ({currentUser.role})
+            </span>
+          </header>
+
+          <div className="min-h-0 flex-1">
+            {viewMode === "dashboard" ? (
+              <DashboardPanel />
+            ) : viewMode === "assets" ? (
+              <DigitalAssetsPanel />
+            ) : viewMode === "alarms" ? (
+              <AlarmsPanel />
+            ) : viewMode === "status" ? (
+              <SystemStatusPanel />
+            ) : viewMode === "llm" ? (
+          <section className="flex-1 overflow-y-auto bg-slate-50/30 p-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="mb-3 font-title text-xl font-bold text-slate-800">我的模型 API 配置</h2>
+              <p className="mb-4 text-sm text-slate-500">每个账号独立保存，聊天请求会优先使用当前账号配置。</p>
 
               {llmError && <p className="mb-3 text-sm text-red-500">{llmError}</p>}
               {llmSuccess && <p className="mb-3 text-sm text-emerald-600">{llmSuccess}</p>}
 
               {llmLoading ? (
-                <div className="inline-flex items-center gap-2 rounded-xl border border-black/5 bg-black/5 px-3 py-2">
-                  <Loader2 size={14} className="animate-spin" />
+                <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-50 px-3 py-2 text-slate-600">
+                  <Loader2 size={14} className="animate-spin text-blue-600" />
                   <span>加载配置中...</span>
                 </div>
               ) : (
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <label className="space-y-1 text-sm">
-                      <span className="text-black/70">Provider</span>
+                      <span className="text-slate-600">Provider</span>
                       <input
-                        className="h-10 w-full rounded-xl border border-black/10 px-3 outline-none focus:border-black/30"
+                        className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                         value={llmProvider}
                         onChange={(e) => setLlmProvider(e.target.value)}
                         placeholder="openai / deepseek / qwen ..."
                       />
                     </label>
                     <label className="space-y-1 text-sm">
-                      <span className="text-black/70">Model</span>
+                      <span className="text-slate-600">Model</span>
                       <input
-                        className="h-10 w-full rounded-xl border border-black/10 px-3 outline-none focus:border-black/30"
+                        className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                         value={llmModel}
                         onChange={(e) => setLlmModel(e.target.value)}
                         placeholder="gpt-4o-mini"
@@ -802,9 +898,9 @@ export default function App() {
                   </div>
 
                   <label className="space-y-1 text-sm">
-                    <span className="text-black/70">Base URL</span>
+                    <span className="text-slate-600">Base URL</span>
                     <input
-                      className="h-10 w-full rounded-xl border border-black/10 px-3 outline-none focus:border-black/30"
+                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                       value={llmBaseUrl}
                       onChange={(e) => setLlmBaseUrl(e.target.value)}
                       placeholder="https://api.openai.com/v1"
@@ -812,10 +908,10 @@ export default function App() {
                   </label>
 
                   <label className="space-y-1 text-sm">
-                    <span className="text-black/70">API Key {llmApiKeySet ? "(已保存)" : "(未保存)"}</span>
+                    <span className="text-slate-600">API Key {llmApiKeySet ? "(已保存)" : "(未保存)"}</span>
                     <input
                       type="password"
-                      className="h-10 w-full rounded-xl border border-black/10 px-3 outline-none focus:border-black/30"
+                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                       value={llmApiKey}
                       onChange={(e) => setLlmApiKey(e.target.value)}
                       placeholder="留空则保持现有密钥不变"
@@ -824,7 +920,7 @@ export default function App() {
 
                   <button
                     type="button"
-                    className="inline-flex h-10 items-center justify-center rounded-xl bg-black px-4 text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:bg-black/40"
+                    className="inline-flex h-10 items-center justify-center rounded-xl bg-blue-600 px-4 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
                     onClick={() => void saveLlmConfig()}
                     disabled={llmSaving}
                   >
@@ -835,25 +931,25 @@ export default function App() {
             </div>
           </section>
         ) : viewMode === "users" && isAdmin ? (
-          <section className="flex-1 overflow-y-auto pr-1">
-            <div className="mb-4 rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 font-title text-xl font-bold">新增用户</h2>
+          <section className="flex-1 overflow-y-auto bg-slate-50/30 p-6">
+            <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="mb-3 font-title text-xl font-bold text-slate-800">新增用户</h2>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
                 <input
-                  className="h-10 rounded-xl border border-black/10 px-3 outline-none focus:border-black/30"
+                  className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                   placeholder="用户名"
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
                 />
                 <input
                   type="password"
-                  className="h-10 rounded-xl border border-black/10 px-3 outline-none focus:border-black/30"
+                  className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                   placeholder="初始密码"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
                 <select
-                  className="h-10 rounded-xl border border-black/10 px-3 outline-none focus:border-black/30"
+                  className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value as UserRole)}
                 >
@@ -862,7 +958,7 @@ export default function App() {
                 </select>
                 <button
                   type="button"
-                  className="inline-flex h-10 items-center justify-center gap-1 rounded-xl bg-black px-3 text-white transition hover:bg-black/85"
+                  className="inline-flex h-10 items-center justify-center gap-1 rounded-xl bg-blue-600 px-3 text-white transition hover:bg-blue-700"
                   onClick={() => void createUserByAdmin()}
                 >
                   <UserPlus size={14} /> 创建
@@ -870,12 +966,12 @@ export default function App() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 font-title text-xl font-bold">用户列表</h2>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="mb-3 font-title text-xl font-bold text-slate-800">用户列表</h2>
               {usersError && <p className="mb-3 text-sm text-red-500">{usersError}</p>}
               {usersLoading ? (
-                <div className="inline-flex items-center gap-2 rounded-xl border border-black/5 bg-black/5 px-3 py-2">
-                  <Loader2 size={14} className="animate-spin" />
+                <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-50 px-3 py-2 text-slate-600">
+                  <Loader2 size={14} className="animate-spin text-blue-600" />
                   <span>加载中...</span>
                 </div>
               ) : (
@@ -884,9 +980,9 @@ export default function App() {
                     const state = editStates[u.id] ?? { username: u.username, role: u.role, password: "" };
                     const isSelf = currentUser.id === u.id;
                     return (
-                      <div key={u.id} className="grid grid-cols-1 gap-2 rounded-xl border border-black/10 p-3 md:grid-cols-6">
+                      <div key={u.id} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-6">
                         <input
-                          className="h-9 rounded-lg border border-black/10 px-2 outline-none focus:border-black/30"
+                          className="h-9 rounded-lg border border-slate-200 px-2 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                           value={state.username}
                           onChange={(e) =>
                             setEditStates((prev) => ({
@@ -896,7 +992,7 @@ export default function App() {
                           }
                         />
                         <select
-                          className="h-9 rounded-lg border border-black/10 px-2 outline-none focus:border-black/30"
+                          className="h-9 rounded-lg border border-slate-200 px-2 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                           value={state.role}
                           onChange={(e) =>
                             setEditStates((prev) => ({
@@ -911,7 +1007,7 @@ export default function App() {
                         </select>
                         <input
                           type="password"
-                          className="h-9 rounded-lg border border-black/10 px-2 outline-none focus:border-black/30"
+                          className="h-9 rounded-lg border border-slate-200 px-2 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                           value={state.password}
                           placeholder="留空则不改密码"
                           onChange={(e) =>
@@ -921,10 +1017,10 @@ export default function App() {
                             }))
                           }
                         />
-                        <div className="flex items-center text-sm text-black/60">{new Date(u.created_at).toLocaleDateString()}</div>
+                        <div className="flex items-center text-sm text-slate-500">{new Date(u.created_at).toLocaleDateString()}</div>
                         <button
                           type="button"
-                          className="inline-flex h-9 items-center justify-center rounded-lg border border-black/10 px-2 transition hover:bg-black/5"
+                          className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 px-2 text-slate-600 transition hover:bg-slate-50 hover:text-slate-800"
                           onClick={() => void saveUser(u.id)}
                         >
                           保存
@@ -945,8 +1041,8 @@ export default function App() {
             </div>
           </section>
         ) : (
-          <>
-            <section ref={chatRef} className="flex-1 space-y-4 overflow-y-auto pr-1">
+          <div className="flex h-full min-h-0 flex-col">
+            <section ref={chatRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/30 p-6">
               <AnimatePresence initial={false}>
                 {messages.map((msg) => {
                   const isUser = msg.role === "user";
@@ -960,13 +1056,13 @@ export default function App() {
                       className={`flex items-start gap-3 ${isUser ? "justify-end" : "justify-start"}`}
                     >
                       {!isUser && (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black text-white">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
                           <Bot size={16} />
                         </div>
                       )}
                       <div
-                        className={`max-w-[82%] rounded-2xl border border-black/5 px-4 py-3 shadow-sm ${
-                          isUser ? "bg-black/5" : "bg-white"
+                        className={`max-w-[82%] rounded-2xl border border-slate-200 px-4 py-3 shadow-sm ${
+                          isUser ? "bg-blue-600 text-white" : "bg-white text-slate-800"
                         }`}
                       >
                         {msg.text && <p className="whitespace-pre-wrap leading-[1.6]">{msg.text}</p>}
@@ -975,15 +1071,15 @@ export default function App() {
                             initial={{ opacity: 0, scale: 0.96 }}
                             animate={{ opacity: 1, scale: 1 }}
                             transition={{ duration: 0.22 }}
-                            className="mt-2 overflow-hidden rounded-2xl border border-black/5"
+                            className="mt-2 overflow-hidden rounded-2xl border border-slate-200"
                           >
                             <img src={msg.imageUrl} alt="生成图像" className="h-auto w-full object-cover" />
                           </motion.div>
                         )}
-                        <p className="mt-2 text-[11px] font-bold tracking-widest text-black/30">{msg.timestamp}</p>
+                        <p className={`mt-2 text-[11px] font-bold tracking-widest ${isUser ? "text-blue-100" : "text-slate-400"}`}>{msg.timestamp}</p>
                       </div>
                       {isUser && (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/10 text-black">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
                           <User size={16} />
                         </div>
                       )}
@@ -994,10 +1090,10 @@ export default function App() {
 
               {draft && (
                 <motion.article initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black text-white">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
                     <Bot size={16} />
                   </div>
-                  <div className="max-w-[82%] rounded-2xl border border-black/5 bg-white px-4 py-3 shadow-sm">
+                  <div className="max-w-[82%] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm">
                     <p className="whitespace-pre-wrap leading-[1.6]">{draft}</p>
                   </div>
                 </motion.article>
@@ -1005,29 +1101,29 @@ export default function App() {
 
               {streamState.loading && streamState.label && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black text-white">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white">
                     <Loader2 size={16} className="animate-spin" />
                   </div>
-                  <div className="inline-flex items-center gap-2 rounded-2xl border border-black/5 bg-white px-4 py-3 shadow-sm">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-black/50" />
+                  <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 shadow-sm">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
                     <p className="leading-[1.6]">{streamState.label}</p>
                   </div>
                 </motion.div>
               )}
             </section>
 
-            <footer className="mt-4">
-              <div className="rounded-3xl border border-black/10 bg-white/80 p-3 shadow-soft backdrop-blur-[12px]">
+            <footer className="border-t border-slate-200 bg-white p-4">
+              <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-soft">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="flex h-10 w-10 items-center justify-center rounded-2xl border border-black/10 bg-white text-black/70 transition hover:text-black"
+                    className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-blue-600"
                     title="上传图像"
                   >
                     <Image size={18} />
                   </button>
                   <input
-                    className="h-10 flex-1 rounded-2xl border border-black/10 bg-white/70 px-4 text-[16px] font-medium leading-[1.6] text-[#111111] outline-none transition-colors duration-200 placeholder:text-black/35 focus:border-black/30"
+                    className="h-10 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-[16px] font-medium leading-[1.6] text-slate-800 outline-none transition-colors duration-200 placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     placeholder="输入你的问题，按回车发送"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
@@ -1040,7 +1136,7 @@ export default function App() {
                   />
                   <button
                     type="button"
-                    className="flex h-10 w-10 items-center justify-center rounded-2xl bg-black text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:bg-black/40"
+                    className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
                     onClick={() => void sendMessage()}
                     disabled={streamState.loading}
                     title="发送消息"
@@ -1049,18 +1145,20 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              <div className="mt-3 flex items-center justify-between px-1 text-[11px] font-bold tracking-widest text-black/30">
+              <div className="mt-3 flex items-center justify-between px-1 text-[11px] font-bold tracking-widest text-slate-400">
                 <div className="space-y-1">
                   <p>版权所有 2026 Lumina 智能系统</p>
                   <p>由 React Agent 流式接口驱动</p>
                 </div>
-                <button className="text-black/60 transition hover:text-black" type="button" onClick={handleArchive}>
+                <button className="text-slate-500 transition hover:text-blue-600" type="button" onClick={handleArchive}>
                   存档
                 </button>
               </div>
             </footer>
-          </>
+          </div>
         )}
+      </div>
+        </div>
       </div>
     </main>
   );

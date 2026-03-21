@@ -244,10 +244,22 @@ class MyAgentsLLM:
             payload["api_base"] = self.base_url
         if self.extra_headers:
             payload["extra_headers"] = self.extra_headers
-        # Only force provider when user explicitly sets it.
-        # Auto-detected provider can conflict with OpenAI-compatible api_base + prefixed model.
+        # LiteLLM expects `custom_llm_provider` instead of `provider`.
+        # Most third-party endpoints here are OpenAI-compatible and should route via `openai`.
         if self.provider and self._provider_explicit:
-            payload["provider"] = self.provider
+            provider_map = {
+                "openai": "openai",
+                "deepseek": "openai",
+                "qwen": "openai",
+                "modelscope": "openai",
+                "kimi": "openai",
+                "zhipu": "openai",
+                "vllm": "openai",
+                "local": "openai",
+                "custom": "openai",
+                "ollama": "ollama",
+            }
+            payload["custom_llm_provider"] = provider_map.get(self.provider, self.provider)
         if self.timeout:
             payload["timeout"] = self.timeout
         if tools:
@@ -265,8 +277,8 @@ class MyAgentsLLM:
             model_name = str(fallback_payload.get("model", ""))
             should_retry = False
 
-            if "provider" in fallback_payload:
-                fallback_payload.pop("provider", None)
+            if "custom_llm_provider" in fallback_payload:
+                fallback_payload.pop("custom_llm_provider", None)
                 should_retry = True
 
             if model_name.startswith("dashscope/"):

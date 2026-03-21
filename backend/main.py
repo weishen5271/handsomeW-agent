@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from api.auth import router as auth_router
+from api.llm_config import router as llm_config_router
 from api.routes import router as agent_router
 from api.user_store import init_db
 
@@ -47,6 +48,7 @@ async def startup() -> None:
 
 
 app.include_router(auth_router)
+app.include_router(llm_config_router)
 app.include_router(agent_router)
 
 

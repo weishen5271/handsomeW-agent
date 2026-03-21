@@ -51,6 +51,20 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_llm_configs (
+                user_id INTEGER PRIMARY KEY,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                api_key TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
         conn.commit()
 
 
@@ -222,7 +236,67 @@ def update_user(
 
 def delete_user(user_id: int) -> bool:
     with _connect() as conn:
+        conn.execute("DELETE FROM user_llm_configs WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
         cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
         conn.commit()
         return cursor.rowcount > 0
+
+
+def get_user_llm_config(user_id: int) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT user_id, provider, model, base_url, api_key, created_at, updated_at
+            FROM user_llm_configs
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
+
+def upsert_user_llm_config(
+    user_id: int,
+    provider: str,
+    model: str,
+    base_url: str,
+    api_key: str | None,
+) -> dict[str, Any]:
+    now = _to_iso(_utc_now())
+    with _connect() as conn:
+        existing = conn.execute(
+            "SELECT api_key, created_at FROM user_llm_configs WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+
+        final_api_key = api_key
+        created_at = now
+        if existing is not None:
+            if api_key is None:
+                final_api_key = existing["api_key"]
+            created_at = existing["created_at"]
+            conn.execute(
+                """
+                UPDATE user_llm_configs
+                SET provider = ?, model = ?, base_url = ?, api_key = ?, updated_at = ?
+                WHERE user_id = ?
+                """,
+                (provider, model, base_url, final_api_key, now, user_id),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO user_llm_configs(user_id, provider, model, base_url, api_key, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, provider, model, base_url, final_api_key, created_at, now),
+            )
+        conn.commit()
+
+    row = get_user_llm_config(user_id)
+    if row is None:
+        raise RuntimeError("保存用户 LLM 配置失败")
+    return row

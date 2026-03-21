@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 type ChatRole = "user" | "assistant";
-type ViewMode = "chat" | "users";
+type ViewMode = "chat" | "users" | "llm";
 type AuthMode = "login" | "register";
 type UserRole = "admin" | "user";
 
@@ -53,6 +53,16 @@ type EditableUser = {
   username: string;
   role: UserRole;
   password: string;
+};
+
+type UserLLMConfig = {
+  user_id: number;
+  provider: string;
+  model: string;
+  base_url: string;
+  api_key_set: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -135,6 +145,10 @@ function formatErrorLoc(loc: unknown[]): string {
     "body.username": "用户名",
     "body.password": "密码",
     "body.role": "角色",
+    "body.provider": "Provider",
+    "body.model": "模型",
+    "body.base_url": "Base URL",
+    "body.api_key": "API Key",
     "query.input": "输入参数",
   };
   return locMap[raw] ?? raw;
@@ -201,6 +215,15 @@ export default function App() {
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<UserRole>("user");
   const [editStates, setEditStates] = useState<Record<number, EditableUser>>({});
+  const [llmProvider, setLlmProvider] = useState("openai");
+  const [llmModel, setLlmModel] = useState("gpt-4o-mini");
+  const [llmBaseUrl, setLlmBaseUrl] = useState("https://api.openai.com/v1");
+  const [llmApiKey, setLlmApiKey] = useState("");
+  const [llmApiKeySet, setLlmApiKeySet] = useState(false);
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmSaving, setLlmSaving] = useState(false);
+  const [llmError, setLlmError] = useState("");
+  const [llmSuccess, setLlmSuccess] = useState("");
 
   const historyPayload = useMemo(
     () =>
@@ -231,6 +254,13 @@ export default function App() {
     localStorage.removeItem(TOKEN_KEY);
     setViewMode("chat");
     setUsers([]);
+    setLlmProvider("openai");
+    setLlmModel("gpt-4o-mini");
+    setLlmBaseUrl("https://api.openai.com/v1");
+    setLlmApiKey("");
+    setLlmApiKeySet(false);
+    setLlmError("");
+    setLlmSuccess("");
   };
 
   const apiRequest = async <T,>(
@@ -331,6 +361,31 @@ export default function App() {
     }
   };
 
+  const fetchUserLlmConfig = async () => {
+    setLlmLoading(true);
+    setLlmError("");
+    setLlmSuccess("");
+
+    try {
+      const config = await apiRequest<UserLLMConfig | null>("/llm-config", { method: "GET" });
+      if (!config) {
+        setLlmProvider("openai");
+        setLlmModel("gpt-4o-mini");
+        setLlmBaseUrl("https://api.openai.com/v1");
+        setLlmApiKeySet(false);
+        return;
+      }
+      setLlmProvider(config.provider);
+      setLlmModel(config.model);
+      setLlmBaseUrl(config.base_url);
+      setLlmApiKeySet(config.api_key_set);
+    } catch (error) {
+      setLlmError(error instanceof Error ? error.message : "加载模型配置失败");
+    } finally {
+      setLlmLoading(false);
+    }
+  };
+
   useEffect(() => {
     void fetchCurrentUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -339,6 +394,9 @@ export default function App() {
   useEffect(() => {
     if (viewMode === "users" && isAdmin) {
       void fetchUsers();
+    }
+    if (viewMode === "llm") {
+      void fetchUserLlmConfig();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, isAdmin]);
@@ -530,6 +588,40 @@ export default function App() {
     }
   };
 
+  const saveLlmConfig = async () => {
+    if (!llmProvider.trim() || !llmModel.trim() || !llmBaseUrl.trim()) {
+      setLlmError("请完整填写 Provider、模型和 Base URL");
+      return;
+    }
+
+    setLlmSaving(true);
+    setLlmError("");
+    setLlmSuccess("");
+
+    try {
+      const payload: Record<string, string> = {
+        provider: llmProvider.trim(),
+        model: llmModel.trim(),
+        base_url: llmBaseUrl.trim(),
+      };
+      if (llmApiKey.trim()) {
+        payload.api_key = llmApiKey.trim();
+      }
+
+      const next = await apiRequest<UserLLMConfig>("/llm-config", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      setLlmApiKeySet(next.api_key_set);
+      setLlmApiKey("");
+      setLlmSuccess("模型配置已保存");
+    } catch (error) {
+      setLlmError(error instanceof Error ? error.message : "保存模型配置失败");
+    } finally {
+      setLlmSaving(false);
+    }
+  };
+
   if (bootLoading) {
     return (
       <main className="min-h-screen bg-luminaBg px-4 py-6 text-[16px] font-medium text-luminaText">
@@ -646,6 +738,15 @@ export default function App() {
             >
               聊天
             </button>
+            <button
+              className={`inline-flex items-center gap-1 text-black/60 transition hover:text-black ${
+                viewMode === "llm" ? "text-black" : ""
+              }`}
+              type="button"
+              onClick={() => setViewMode("llm")}
+            >
+              <Settings size={14} /> 模型配置
+            </button>
             {isAdmin && (
               <button
                 className={`inline-flex items-center gap-1 text-black/60 transition hover:text-black ${
@@ -663,7 +764,77 @@ export default function App() {
           </div>
         </header>
 
-        {viewMode === "users" && isAdmin ? (
+        {viewMode === "llm" ? (
+          <section className="flex-1 overflow-y-auto pr-1">
+            <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+              <h2 className="mb-3 font-title text-xl font-bold">我的模型 API 配置</h2>
+              <p className="mb-4 text-sm text-black/60">每个账号独立保存，聊天请求会优先使用当前账号配置。</p>
+
+              {llmError && <p className="mb-3 text-sm text-red-500">{llmError}</p>}
+              {llmSuccess && <p className="mb-3 text-sm text-emerald-600">{llmSuccess}</p>}
+
+              {llmLoading ? (
+                <div className="inline-flex items-center gap-2 rounded-xl border border-black/5 bg-black/5 px-3 py-2">
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>加载配置中...</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <label className="space-y-1 text-sm">
+                      <span className="text-black/70">Provider</span>
+                      <input
+                        className="h-10 w-full rounded-xl border border-black/10 px-3 outline-none focus:border-black/30"
+                        value={llmProvider}
+                        onChange={(e) => setLlmProvider(e.target.value)}
+                        placeholder="openai / deepseek / qwen ..."
+                      />
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      <span className="text-black/70">Model</span>
+                      <input
+                        className="h-10 w-full rounded-xl border border-black/10 px-3 outline-none focus:border-black/30"
+                        value={llmModel}
+                        onChange={(e) => setLlmModel(e.target.value)}
+                        placeholder="gpt-4o-mini"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="space-y-1 text-sm">
+                    <span className="text-black/70">Base URL</span>
+                    <input
+                      className="h-10 w-full rounded-xl border border-black/10 px-3 outline-none focus:border-black/30"
+                      value={llmBaseUrl}
+                      onChange={(e) => setLlmBaseUrl(e.target.value)}
+                      placeholder="https://api.openai.com/v1"
+                    />
+                  </label>
+
+                  <label className="space-y-1 text-sm">
+                    <span className="text-black/70">API Key {llmApiKeySet ? "(已保存)" : "(未保存)"}</span>
+                    <input
+                      type="password"
+                      className="h-10 w-full rounded-xl border border-black/10 px-3 outline-none focus:border-black/30"
+                      value={llmApiKey}
+                      onChange={(e) => setLlmApiKey(e.target.value)}
+                      placeholder="留空则保持现有密钥不变"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    className="inline-flex h-10 items-center justify-center rounded-xl bg-black px-4 text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:bg-black/40"
+                    onClick={() => void saveLlmConfig()}
+                    disabled={llmSaving}
+                  >
+                    {llmSaving ? <Loader2 size={14} className="animate-spin" /> : "保存配置"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
+        ) : viewMode === "users" && isAdmin ? (
           <section className="flex-1 overflow-y-auto pr-1">
             <div className="mb-4 rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
               <h2 className="mb-3 font-title text-xl font-bold">新增用户</h2>

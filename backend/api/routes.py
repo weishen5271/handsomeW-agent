@@ -26,11 +26,12 @@ async def chat_ui() -> FileResponse:
 async def chat(
     agent_type: AgentType,
     request: AgentChatRequest,
-    _: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ) -> AgentChatResponse:
     try:
         service = AgentService()
         result = await service.run(
+            user_id=current_user["id"],
             agent_type=agent_type,
             user_input=request.input,
             history=request.history,
@@ -56,10 +57,12 @@ def _build_streaming_response(
     service: AgentService,
     agent_type: AgentType,
     request: AgentChatRequest,
+    user_id: int,
 ) -> StreamingResponse:
     async def event_generator():
         try:
             async for event in service.run_stream(
+                user_id=user_id,
                 agent_type=agent_type,
                 user_input=request.input,
                 history=request.history,
@@ -94,10 +97,10 @@ def _build_streaming_response(
 async def chat_stream(
     agent_type: AgentType,
     request: AgentChatRequest,
-    _: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ) -> StreamingResponse:
     service = AgentService()
-    return _build_streaming_response(service, agent_type, request)
+    return _build_streaming_response(service, agent_type, request, current_user["id"])
 
 
 @router.get("/{agent_type}/chat/stream")
@@ -105,8 +108,8 @@ async def chat_stream_get(
     agent_type: AgentType,
     input: str,
     system_prompt: str | None = None,
-    _: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ) -> StreamingResponse:
     service = AgentService()
     request = AgentChatRequest(input=input, system_prompt=system_prompt)
-    return _build_streaming_response(service, agent_type, request)
+    return _build_streaming_response(service, agent_type, request, current_user["id"])

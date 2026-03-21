@@ -64,3 +64,20 @@ class UserUpdateRequest(BaseModel):
     username: str | None = Field(default=None, min_length=3, max_length=32)
     password: str | None = Field(default=None, min_length=6, max_length=128)
     role: Literal["admin", "user"] | None = None
+
+
+class UserLLMConfigRequest(BaseModel):
+    provider: str = Field(..., min_length=1, max_length=32)
+    model: str = Field(..., min_length=1, max_length=128)
+    base_url: str = Field(..., min_length=1, max_length=256)
+    api_key: str | None = Field(default=None, max_length=512)
+
+
+class UserLLMConfigResponse(BaseModel):
+    user_id: int
+    provider: str
+    model: str
+    base_url: str
+    api_key_set: bool
+    created_at: datetime | str
+    updated_at: datetime | str

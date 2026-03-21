@@ -7,6 +7,7 @@ from typing import Any, AsyncIterator
 from core.llm import MyAgentsLLM
 
 from api.schemas import AgentType, ChatMessage
+from api.user_store import get_user_llm_config
 
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful ReAct assistant."
@@ -24,10 +25,23 @@ def _load_react_agent_class():
 
 class AgentService:
     def __init__(self) -> None:
-        self._llm = MyAgentsLLM()
+        pass
+
+    def _build_llm(self, user_id: int) -> MyAgentsLLM:
+        config = get_user_llm_config(user_id)
+        llm_kwargs: dict[str, Any] = {}
+        if config:
+            llm_kwargs = {
+                "provider": config["provider"],
+                "model": config["model"],
+                "base_url": config["base_url"],
+                "api_key": config.get("api_key"),
+            }
+        return MyAgentsLLM(**llm_kwargs)
 
     async def run(
         self,
+        user_id: int,
         agent_type: AgentType,
         user_input: str,
         history: list[ChatMessage] | None = None,
@@ -38,11 +52,12 @@ class AgentService:
         _ = history
         _ = temperature
         _ = max_tokens
+        llm = self._build_llm(user_id)
 
         ReactAgent = _load_react_agent_class()
         react_agent = ReactAgent(
             name=f"{agent_type.value}-react-runner",
-            llm=self._llm,
+            llm=llm,
             system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
         )
         result = await react_agent.run(input_str=user_input, verbose=False)
@@ -70,6 +85,7 @@ class AgentService:
 
     async def run_stream(
         self,
+        user_id: int,
         agent_type: AgentType,
         user_input: str,
         history: list[ChatMessage] | None = None,
@@ -80,11 +96,12 @@ class AgentService:
         _ = history
         _ = temperature
         _ = max_tokens
+        llm = self._build_llm(user_id)
 
         ReactAgent = _load_react_agent_class()
         react_agent = ReactAgent(
             name=f"{agent_type.value}-react-runner",
-            llm=self._llm,
+            llm=llm,
             system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
         )
 

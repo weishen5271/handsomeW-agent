@@ -1,6 +1,7 @@
 import hashlib
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -9,6 +10,7 @@ from psycopg.rows import dict_row
 
 SESSION_TTL_DAYS = 7
 PBKDF2_ROUNDS = 120_000
+DEFAULT_CHAT_SESSION_TITLE = "新会话"
 
 
 def _utc_now() -> datetime:
@@ -58,6 +60,42 @@ def init_db() -> None:
                 updated_at TIMESTAMPTZ NOT NULL,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY,
+                user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                title TEXT,
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL,
+                last_message_at TIMESTAMPTZ
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_memories (
+                id BIGSERIAL PRIMARY KEY,
+                session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                role TEXT NOT NULL CHECK(role IN ('system', 'user', 'assistant', 'tool')),
+                content TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_last_message
+            ON chat_sessions(user_id, last_message_at DESC NULLS LAST, created_at DESC)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_chat_memories_session_created
+            ON chat_memories(session_id, created_at ASC)
             """
         )
 
@@ -228,10 +266,112 @@ def update_user(
 
 def delete_user(user_id: int) -> bool:
     with _connect() as conn:
+        conn.execute("DELETE FROM chat_memories WHERE user_id = %s", (user_id,))
+        conn.execute("DELETE FROM chat_sessions WHERE user_id = %s", (user_id,))
         conn.execute("DELETE FROM user_llm_configs WHERE user_id = %s", (user_id,))
         conn.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
         cursor = conn.execute("DELETE FROM users WHERE id = %s", (user_id,))
         return cursor.rowcount > 0
+
+
+def create_chat_session(user_id: int, title: str | None = None) -> dict[str, Any]:
+    now = _utc_now()
+    session_id = str(uuid.uuid4())
+    final_title = title.strip() if title else DEFAULT_CHAT_SESSION_TITLE
+
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            INSERT INTO chat_sessions(id, user_id, title, created_at, updated_at, last_message_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id, user_id, title, created_at, updated_at, last_message_at
+            """,
+            (session_id, user_id, final_title, now, now, None),
+        ).fetchone()
+        return dict(row)
+
+
+def get_chat_session(user_id: int, session_id: str) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, user_id, title, created_at, updated_at, last_message_at
+            FROM chat_sessions
+            WHERE id = %s AND user_id = %s
+            """,
+            (session_id, user_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
+
+def list_chat_sessions(user_id: int, limit: int = 20) -> list[dict[str, Any]]:
+    safe_limit = max(1, min(limit, 100))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, user_id, title, created_at, updated_at, last_message_at
+            FROM chat_sessions
+            WHERE user_id = %s
+            ORDER BY last_message_at DESC NULLS LAST, created_at DESC
+            LIMIT %s
+            """,
+            (user_id, safe_limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def append_chat_memory(
+    user_id: int,
+    session_id: str,
+    role: str,
+    content: str,
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    now = created_at or _utc_now()
+
+    with _connect() as conn:
+        session_row = conn.execute(
+            "SELECT id FROM chat_sessions WHERE id = %s AND user_id = %s",
+            (session_id, user_id),
+        ).fetchone()
+        if session_row is None:
+            raise ValueError("会话不存在或无权限")
+
+        row = conn.execute(
+            """
+            INSERT INTO chat_memories(session_id, user_id, role, content, created_at)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, session_id, user_id, role, content, created_at
+            """,
+            (session_id, user_id, role, content, now),
+        ).fetchone()
+        conn.execute(
+            """
+            UPDATE chat_sessions
+            SET updated_at = %s, last_message_at = %s
+            WHERE id = %s
+            """,
+            (now, now, session_id),
+        )
+        return dict(row)
+
+
+def list_chat_memories(user_id: int, session_id: str, limit: int = 500) -> list[dict[str, Any]]:
+    safe_limit = max(1, min(limit, 2000))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, session_id, role, content, created_at
+            FROM chat_memories
+            WHERE user_id = %s AND session_id = %s
+            ORDER BY created_at ASC
+            LIMIT %s
+            """,
+            (user_id, session_id, safe_limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def get_user_llm_config(user_id: int) -> dict[str, Any] | None:

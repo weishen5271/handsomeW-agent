@@ -18,6 +18,7 @@ class ChatMessage(BaseModel):
 
 class AgentChatRequest(BaseModel):
     input: str = Field(..., min_length=1, description="User input")
+    session_id: str | None = Field(default=None, description="Conversation session id")
     history: list[ChatMessage] = Field(default_factory=list, description="Chat history")
     system_prompt: str | None = Field(default=None, description="Optional system prompt")
     enable_rag: bool = Field(default=True, description="Enable GraphRAG context enhancement")
@@ -31,6 +32,23 @@ class AgentChatResponse(BaseModel):
     finish_reason: str
     usage: dict[str, int] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    user_id: int
+    title: str | None = None
+    created_at: datetime | str
+    updated_at: datetime | str
+    last_message_at: datetime | str | None = None
+
+
+class ChatMemoryResponse(BaseModel):
+    id: int
+    session_id: str
+    role: str
+    content: str
+    created_at: datetime | str
 
 
 class UserPublic(BaseModel):

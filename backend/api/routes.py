@@ -6,7 +6,14 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from api.agent_service import AgentService
 from api.auth import get_current_user
-from api.schemas import AgentChatRequest, AgentChatResponse, AgentType
+from api.schemas import (
+    AgentChatRequest,
+    AgentChatResponse,
+    AgentType,
+    ChatMemoryResponse,
+    ChatSessionResponse,
+)
+from api.user_store import create_chat_session, get_chat_session, list_chat_memories, list_chat_sessions
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 _UI_FILE = Path(__file__).resolve().parents[2] / "front" / "chat_ui.html"
@@ -15,6 +22,37 @@ _UI_FILE = Path(__file__).resolve().parents[2] / "front" / "chat_ui.html"
 @router.get("", response_model=list[str])
 async def list_agents() -> list[str]:
     return [agent.value for agent in AgentType]
+
+
+@router.get("/sessions", response_model=list[ChatSessionResponse])
+async def get_sessions(
+    limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+) -> list[ChatSessionResponse]:
+    rows = list_chat_sessions(user_id=current_user["id"], limit=limit)
+    return [ChatSessionResponse(**row) for row in rows]
+
+
+@router.post("/sessions", response_model=ChatSessionResponse)
+async def create_session(
+    current_user: dict = Depends(get_current_user),
+) -> ChatSessionResponse:
+    row = create_chat_session(user_id=current_user["id"])
+    return ChatSessionResponse(**row)
+
+
+@router.get("/sessions/{session_id}/messages", response_model=list[ChatMemoryResponse])
+async def get_session_messages(
+    session_id: str,
+    limit: int = 500,
+    current_user: dict = Depends(get_current_user),
+) -> list[ChatMemoryResponse]:
+    session = get_chat_session(user_id=current_user["id"], session_id=session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    rows = list_chat_memories(user_id=current_user["id"], session_id=session_id, limit=limit)
+    return [ChatMemoryResponse(**row) for row in rows]
 
 
 @router.get("/ui")
@@ -34,6 +72,7 @@ async def chat(
             user_id=current_user["id"],
             agent_type=agent_type,
             user_input=request.input,
+            session_id=request.session_id,
             history=request.history,
             system_prompt=request.system_prompt,
             enable_rag=request.enable_rag,
@@ -66,6 +105,7 @@ def _build_streaming_response(
                 user_id=user_id,
                 agent_type=agent_type,
                 user_input=request.input,
+                session_id=request.session_id,
                 history=request.history,
                 system_prompt=request.system_prompt,
                 enable_rag=request.enable_rag,

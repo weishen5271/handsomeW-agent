@@ -9,6 +9,7 @@ import {
   Loader2,
   LogOut,
   MessageSquare,
+  Plus,
   Send,
   Settings,
   Shield,
@@ -59,6 +60,23 @@ type AuthUser = {
 type AuthResponse = {
   token: string;
   user: AuthUser;
+};
+
+type AgentSession = {
+  id: string;
+  user_id: number;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string | null;
+};
+
+type AgentMemory = {
+  id: number;
+  session_id: string;
+  role: string;
+  content: string;
+  created_at: string;
 };
 
 type EditableUser = {
@@ -216,6 +234,10 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
   const [selectedAsset, setSelectedAsset] = useState<DigitalAsset | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+  const [sessionList, setSessionList] = useState<AgentSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState("");
   const [input, setInput] = useState("");
   const [streamState, setStreamState] = useState<StreamState>({ loading: false, label: null });
   const [draft, setDraft] = useState<string>("");
@@ -265,6 +287,10 @@ export default function App() {
     setToken("");
     setCurrentUser(null);
     localStorage.removeItem(TOKEN_KEY);
+    setMessages([]);
+    setChatSessionId(null);
+    setSessionList([]);
+    setSessionsError("");
     setViewMode("dashboard");
     setUsers([]);
     setLlmProvider("openai");
@@ -326,6 +352,40 @@ export default function App() {
     scrollToBottom();
   };
 
+  const mapMemoryToMessage = (memory: AgentMemory): ChatMessage | null => {
+    if (memory.role !== "user" && memory.role !== "assistant") {
+      return null;
+    }
+    const imageUrl = extractImageUrl(memory.content);
+    const displayText = cleanText(memory.content, imageUrl);
+    return {
+      id: `${memory.session_id}-${memory.id}`,
+      role: memory.role,
+      text: displayText,
+      imageUrl,
+      timestamp: new Date(memory.created_at).toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    };
+  };
+
+  const formatSessionTime = (isoText: string | null) => {
+    if (!isoText) return "暂无消息";
+    return new Date(isoText).toLocaleString("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const buildSessionTitle = (session: AgentSession, index: number) => {
+    const raw = (session.title ?? "").trim();
+    if (raw) return raw;
+    return `会话 ${index + 1}`;
+  };
+
   const handleArchive = () => {
     const blob = new Blob([JSON.stringify(messages, null, 2)], {
       type: "application/json;charset=utf-8",
@@ -351,6 +411,74 @@ export default function App() {
       clearAuthSession();
     } finally {
       setBootLoading(false);
+    }
+  };
+
+  const loadSessionMessages = async (sessionId: string) => {
+    const memories = await apiRequest<AgentMemory[]>(
+      `/agents/sessions/${sessionId}/messages?limit=500`,
+      { method: "GET" },
+    );
+    const restored = memories
+      .map((memory) => mapMemoryToMessage(memory))
+      .filter((item): item is ChatMessage => Boolean(item));
+    setMessages(restored);
+    setChatSessionId(sessionId);
+    scrollToBottom();
+  };
+
+  const fetchSessions = async (preferredSessionId?: string | null): Promise<string | null> => {
+    if (!token) return null;
+
+    setSessionsLoading(true);
+    setSessionsError("");
+
+    try {
+      const sessions = await apiRequest<AgentSession[]>("/agents/sessions?limit=50", { method: "GET" });
+      setSessionList(sessions);
+
+      if (!sessions.length) {
+        return null;
+      }
+
+      const target = preferredSessionId && sessions.some((s) => s.id === preferredSessionId)
+        ? preferredSessionId
+        : sessions[0].id;
+      return target;
+    } catch (error) {
+      setSessionsError(error instanceof Error ? error.message : "加载会话历史失败");
+      return null;
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const createNewSession = async () => {
+    if (streamState.loading) return;
+    setSessionsError("");
+    try {
+      const created = await apiRequest<AgentSession>("/agents/sessions", { method: "POST" });
+      setChatSessionId(created.id);
+      setMessages([]);
+      setDraft("");
+      setInput("");
+      const selectedId = await fetchSessions(created.id);
+      if (selectedId && selectedId !== created.id) {
+        await loadSessionMessages(selectedId);
+      }
+    } catch (error) {
+      setSessionsError(error instanceof Error ? error.message : "新建会话失败");
+    }
+  };
+
+  const switchSession = async (sessionId: string) => {
+    if (streamState.loading || sessionId === chatSessionId) return;
+    setSessionsError("");
+    setDraft("");
+    try {
+      await loadSessionMessages(sessionId);
+    } catch (error) {
+      setSessionsError(error instanceof Error ? error.message : "切换会话失败");
     }
   };
 
@@ -403,6 +531,21 @@ export default function App() {
     void fetchCurrentUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    if (token && currentUser) {
+      void (async () => {
+        const targetSessionId = await fetchSessions(chatSessionId);
+        if (!targetSessionId) {
+          setChatSessionId(null);
+          setMessages([]);
+          return;
+        }
+        await loadSessionMessages(targetSessionId);
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, currentUser?.id]);
 
   useEffect(() => {
     if (viewMode === "users" && isAdmin) {
@@ -473,6 +616,7 @@ export default function App() {
     setStreamState({ loading: true, label: "正在思考" });
 
     try {
+      let resolvedSessionId = chatSessionId;
       const response = await fetch(AGENT_API, {
         method: "POST",
         headers: {
@@ -481,6 +625,7 @@ export default function App() {
         },
         body: JSON.stringify({
           input: content,
+          session_id: chatSessionId,
           history: historyPayload,
         }),
       });
@@ -511,6 +656,14 @@ export default function App() {
         for (const raw of parts) {
           const events = parseBlocks(raw);
           for (const event of events) {
+            if (event.eventType === "session") {
+              const sid = String(event.payload.session_id ?? "").trim();
+              if (sid) {
+                resolvedSessionId = sid;
+                setChatSessionId(sid);
+              }
+            }
+
             if (event.eventType === "assistant") {
               const text = String(event.payload.content ?? "");
               if (text) {
@@ -543,6 +696,7 @@ export default function App() {
       }
 
       appendMessage("assistant", finalContent || latestDraft || "我已经完成处理。\n如需继续，请告诉我下一步目标。");
+      await fetchSessions(resolvedSessionId);
     } catch (error) {
       appendMessage("assistant", `发生错误：${error instanceof Error ? error.message : "未知错误"}`);
     } finally {
@@ -1076,120 +1230,179 @@ export default function App() {
             </div>
           </section>
         ) : (
-          <div className="flex h-full min-h-0 flex-col">
-            <section ref={chatRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/30 p-6">
-              <AnimatePresence initial={false}>
-                {messages.map((msg) => {
-                  const isUser = msg.role === "user";
-                  return (
-                    <motion.article
-                      key={msg.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 6 }}
-                      transition={{ duration: 0.2, ease: "easeOut" }}
-                      className={`flex items-start gap-3 ${isUser ? "justify-end" : "justify-start"}`}
-                    >
-                      {!isUser && (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
-                          <Bot size={16} />
-                        </div>
-                      )}
-                      <div
-                        className={`max-w-[82%] rounded-2xl border border-slate-200 px-4 py-3 shadow-sm ${
-                          isUser ? "bg-blue-600 text-white" : "bg-white text-slate-800"
-                        }`}
+          <div className="flex h-full min-h-0 flex-col lg:flex-row">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <section ref={chatRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/30 p-6">
+                <AnimatePresence initial={false}>
+                  {messages.map((msg) => {
+                    const isUser = msg.role === "user";
+                    return (
+                      <motion.article
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 6 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className={`flex items-start gap-3 ${isUser ? "justify-end" : "justify-start"}`}
                       >
-                        {msg.text && <p className="whitespace-pre-wrap leading-[1.6]">{msg.text}</p>}
-                        {msg.imageUrl && (
-                          <motion.div
-                            initial={{ opacity: 0, scale: 0.96 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ duration: 0.22 }}
-                            className="mt-2 overflow-hidden rounded-2xl border border-slate-200"
-                          >
-                            <img src={msg.imageUrl} alt="生成图像" className="h-auto w-full object-cover" />
-                          </motion.div>
+                        {!isUser && (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
+                            <Bot size={16} />
+                          </div>
                         )}
-                        <p className={`mt-2 text-[11px] font-bold tracking-widest ${isUser ? "text-blue-100" : "text-slate-400"}`}>{msg.timestamp}</p>
-                      </div>
-                      {isUser && (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                          <User size={16} />
+                        <div
+                          className={`max-w-[82%] rounded-2xl border border-slate-200 px-4 py-3 shadow-sm ${
+                            isUser ? "bg-blue-600 text-white" : "bg-white text-slate-800"
+                          }`}
+                        >
+                          {msg.text && <p className="whitespace-pre-wrap leading-[1.6]">{msg.text}</p>}
+                          {msg.imageUrl && (
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.96 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ duration: 0.22 }}
+                              className="mt-2 overflow-hidden rounded-2xl border border-slate-200"
+                            >
+                              <img src={msg.imageUrl} alt="生成图像" className="h-auto w-full object-cover" />
+                            </motion.div>
+                          )}
+                          <p className={`mt-2 text-[11px] font-bold tracking-widest ${isUser ? "text-blue-100" : "text-slate-400"}`}>{msg.timestamp}</p>
                         </div>
-                      )}
-                    </motion.article>
-                  );
-                })}
-              </AnimatePresence>
+                        {isUser && (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                            <User size={16} />
+                          </div>
+                        )}
+                      </motion.article>
+                    );
+                  })}
+                </AnimatePresence>
 
-              {draft && (
-                <motion.article initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
-                    <Bot size={16} />
-                  </div>
-                  <div className="max-w-[82%] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm">
-                    <p className="whitespace-pre-wrap leading-[1.6]">{draft}</p>
-                  </div>
-                </motion.article>
-              )}
+                {draft && (
+                  <motion.article initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
+                      <Bot size={16} />
+                    </div>
+                    <div className="max-w-[82%] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm">
+                      <p className="whitespace-pre-wrap leading-[1.6]">{draft}</p>
+                    </div>
+                  </motion.article>
+                )}
 
-              {streamState.loading && streamState.label && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white">
-                    <Loader2 size={16} className="animate-spin" />
-                  </div>
-                  <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 shadow-sm">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
-                    <p className="leading-[1.6]">{streamState.label}</p>
-                  </div>
-                </motion.div>
-              )}
-            </section>
+                {streamState.loading && streamState.label && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white">
+                      <Loader2 size={16} className="animate-spin" />
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 shadow-sm">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+                      <p className="leading-[1.6]">{streamState.label}</p>
+                    </div>
+                  </motion.div>
+                )}
+              </section>
 
-            <footer className="border-t border-slate-200 bg-white p-4">
-              <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-soft">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-blue-600"
-                    title="上传图像"
-                  >
-                    <Image size={18} />
-                  </button>
-                  <input
-                    className="h-10 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-[16px] font-medium leading-[1.6] text-slate-800 outline-none transition-colors duration-200 placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                    placeholder="输入你的问题，按回车发送"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        void sendMessage();
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-                    onClick={() => void sendMessage()}
-                    disabled={streamState.loading}
-                    title="发送消息"
-                  >
-                    <Send size={18} />
+              <footer className="border-t border-slate-200 bg-white p-4">
+                <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-soft">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-blue-600"
+                      title="上传图像"
+                    >
+                      <Image size={18} />
+                    </button>
+                    <input
+                      className="h-10 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-[16px] font-medium leading-[1.6] text-slate-800 outline-none transition-colors duration-200 placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                      placeholder="输入你的问题，按回车发送"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          void sendMessage();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                      onClick={() => void sendMessage()}
+                      disabled={streamState.loading}
+                      title="发送消息"
+                    >
+                      <Send size={18} />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center justify-between px-1 text-[11px] font-bold tracking-widest text-slate-400">
+                  <div className="space-y-1">
+                    <p>版权所有 2026 Lumina 智能系统</p>
+                    <p>由 React Agent 流式接口驱动</p>
+                  </div>
+                  <button className="text-slate-500 transition hover:text-blue-600" type="button" onClick={handleArchive}>
+                    存档
                   </button>
                 </div>
-              </div>
-              <div className="mt-3 flex items-center justify-between px-1 text-[11px] font-bold tracking-widest text-slate-400">
-                <div className="space-y-1">
-                  <p>版权所有 2026 Lumina 智能系统</p>
-                  <p>由 React Agent 流式接口驱动</p>
+              </footer>
+            </div>
+
+            <aside className="flex h-72 shrink-0 flex-col border-t border-slate-200 bg-white lg:h-auto lg:w-80 lg:border-l lg:border-t-0">
+              <div className="border-b border-slate-200 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-700">会话历史</p>
+                  <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                    {sessionList.length}
+                  </span>
                 </div>
-                <button className="text-slate-500 transition hover:text-blue-600" type="button" onClick={handleArchive}>
-                  存档
+                <button
+                  type="button"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                  onClick={() => void createNewSession()}
+                  disabled={streamState.loading}
+                >
+                  <Plus size={14} /> 新建会话
                 </button>
+                {sessionsError && <p className="mt-2 text-xs text-red-500">{sessionsError}</p>}
               </div>
-            </footer>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                {sessionsLoading ? (
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <Loader2 size={12} className="animate-spin text-blue-600" />
+                    加载会话中...
+                  </div>
+                ) : !sessionList.length ? (
+                  <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-5 text-center text-xs text-slate-500">
+                    暂无历史会话
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {sessionList.map((session, index) => {
+                      const active = session.id === chatSessionId;
+                      return (
+                        <button
+                          key={session.id}
+                          type="button"
+                          className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                            active
+                              ? "border-blue-200 bg-blue-50"
+                              : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                          }`}
+                          onClick={() => void switchSession(session.id)}
+                          disabled={streamState.loading}
+                        >
+                          <p className={`truncate text-sm font-semibold ${active ? "text-blue-700" : "text-slate-700"}`}>
+                            {buildSessionTitle(session, index)}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">{formatSessionTime(session.last_message_at ?? session.created_at)}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </aside>
           </div>
         )}
       </div>

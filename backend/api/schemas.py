@@ -82,3 +82,126 @@ class UserLLMConfigResponse(BaseModel):
     api_key_set: bool
     created_at: datetime | str
     updated_at: datetime | str
+
+
+AssetStatus = Literal["Normal", "Warning", "Critical"]
+
+
+class DigitalAssetBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    type: str = Field(..., min_length=1, max_length=64)
+    status: AssetStatus = "Normal"
+    location: str = Field(..., min_length=1, max_length=128)
+    health: int = Field(..., ge=0, le=100)
+    model_file: str = Field(..., min_length=1, max_length=256)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DigitalAssetCreateRequest(DigitalAssetBase):
+    id: str = Field(..., min_length=1, max_length=64)
+
+
+class DigitalAssetUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    type: str | None = Field(default=None, min_length=1, max_length=64)
+    status: AssetStatus | None = None
+    location: str | None = Field(default=None, min_length=1, max_length=128)
+    health: int | None = Field(default=None, ge=0, le=100)
+    model_file: str | None = Field(default=None, min_length=1, max_length=256)
+    metadata: dict[str, Any] | None = None
+
+
+class DigitalAssetResponse(DigitalAssetBase):
+    id: str
+    created_at: datetime | str
+    updated_at: datetime | str
+
+
+class AssetRelationResponse(BaseModel):
+    source_asset_id: str
+    target_asset_id: str
+    relation_type: str
+    created_at: datetime | str
+
+
+class SceneInstanceUpsertRequest(BaseModel):
+    asset_id: str = Field(..., min_length=1, max_length=64)
+    position_x: float = 0
+    position_y: float = 0
+    position_z: float = 0
+    rotation_x: float = 0
+    rotation_y: float = 0
+    rotation_z: float = 0
+    scale: float = Field(default=1, gt=0)
+
+
+class SceneInstanceResponse(BaseModel):
+    id: str
+    scene_id: str
+    asset_id: str
+    position_x: float
+    position_y: float
+    position_z: float
+    rotation_x: float
+    rotation_y: float
+    rotation_z: float
+    scale: float
+    name: str
+    type: str
+    status: AssetStatus
+    location: str
+    health: int
+    model_file: str
+
+
+class SceneRelationResponse(BaseModel):
+    source_asset_id: str
+    target_asset_id: str
+    relation_type: str
+    created_at: datetime | str | None = None
+
+
+class SceneResponse(BaseModel):
+    scene_id: str
+    name: str
+    description: str
+    created_at: datetime | str
+    updated_at: datetime | str
+    asset_count: int
+    instances: list[SceneInstanceResponse]
+    relations: list[SceneRelationResponse]
+
+
+class SceneBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    description: str = Field(default="", max_length=512)
+
+
+class SceneCreateRequest(SceneBase):
+    id: str = Field(..., min_length=1, max_length=64)
+
+
+class SceneUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=512)
+
+
+class SceneSummaryResponse(SceneBase):
+    id: str
+    created_at: datetime | str
+    updated_at: datetime | str
+    asset_count: int
+
+
+class SceneAssetsReplaceRequest(BaseModel):
+    asset_ids: list[str] = Field(default_factory=list)
+
+
+class SceneRelationItem(BaseModel):
+    source_asset_id: str = Field(..., min_length=1, max_length=64)
+    target_asset_id: str = Field(..., min_length=1, max_length=64)
+    relation_type: str = Field(default="upstream", min_length=1, max_length=64)
+
+
+class SceneRelationsReplaceRequest(BaseModel):
+    relations: list[SceneRelationItem] = Field(default_factory=list)

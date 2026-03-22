@@ -126,7 +126,40 @@ If `/api` prefix is used, set:
 VITE_API_BASE_URL=https://your-domain.com/api
 ```
 
-## 6. Optional GraphRAG Environment Variables
+## 6. Docker Compose Deployment
+
+The repository now includes:
+
+- `docker-compose.yml`
+- `backend/Dockerfile`
+- `front/Dockerfile`
+- `front/nginx.conf`
+
+Start all services (frontend + backend + PostgreSQL):
+
+```bash
+docker compose up -d --build
+```
+
+Access:
+
+- Frontend: `http://127.0.0.1:8080`
+- Backend health: `http://127.0.0.1:8000/health`
+- API docs: `http://127.0.0.1:8000/docs`
+
+Stop:
+
+```bash
+docker compose down
+```
+
+Stop and remove DB volume:
+
+```bash
+docker compose down -v
+```
+
+## 7. Optional GraphRAG Environment Variables
 
 Set these when GraphRAG is enabled:
 

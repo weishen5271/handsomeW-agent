@@ -137,7 +137,40 @@ server {
 VITE_API_BASE_URL=https://your-domain.com/api
 ```
 
-## 6. GraphRAG 相关变量（可选）
+## 6. Docker Compose 部署
+
+仓库已新增以下文件：
+
+- `docker-compose.yml`
+- `backend/Dockerfile`
+- `front/Dockerfile`
+- `front/nginx.conf`
+
+一键启动前后端与 PostgreSQL：
+
+```bash
+docker compose up -d --build
+```
+
+访问地址：
+
+- 前端：`http://127.0.0.1:8080`
+- 后端健康检查：`http://127.0.0.1:8000/health`
+- API 文档：`http://127.0.0.1:8000/docs`
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+停止并删除数据库数据卷：
+
+```bash
+docker compose down -v
+```
+
+## 7. GraphRAG 相关变量（可选）
 
 启用 GraphRAG 时，需在 `backend/.env`（或 `GRAPH_RAG_ENV_FILE` 指向的 env）中补充：
 

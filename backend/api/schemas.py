@@ -102,6 +102,56 @@ class UserLLMConfigResponse(BaseModel):
     updated_at: datetime | str
 
 
+class UserSkillConfigItem(BaseModel):
+    user_id: int
+    name: str
+    path: str
+    source: str
+    description: str = ""
+    enabled: bool
+    created_at: datetime | str
+    updated_at: datetime | str
+
+
+class UserSkillUpdateItem(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    enabled: bool = True
+
+
+class UserSkillConfigUpdateRequest(BaseModel):
+    skills: list[UserSkillUpdateItem] = Field(default_factory=list)
+
+
+class SkillShopItem(BaseModel):
+    external_id: str
+    name: str
+    source: str
+    description: str = ""
+    repo_url: str = ""
+    skill_md_url: str = ""
+    icon_url: str = ""
+    tag: str = ""
+    version: str = ""
+    downloads: int = 0
+    stars: int = 0
+    available: bool = True
+    missing_requirements: str = ""
+    added: bool = False
+
+
+class SkillShopListResponse(BaseModel):
+    items: list[SkillShopItem] = Field(default_factory=list)
+    page: int = 1
+    page_size: int = 12
+    has_more: bool = False
+    total: int | None = None
+
+
+class SkillShopAddRequest(BaseModel):
+    external_id: str = Field(..., min_length=1, max_length=256)
+    enabled: bool = True
+
+
 AssetStatus = Literal["Normal", "Warning", "Critical"]
 
 

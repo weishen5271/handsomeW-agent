@@ -3,7 +3,6 @@ from .message import Message
 from tools.builtin.base_tool import Tool
 from .skill import SkillsLocader
 from tools.tool_executor import ToolExecutor
-from pathlib import Path
 import platform
 import re
 import json
@@ -13,8 +12,8 @@ from core.base import ToolCallRequest
 
 class ContextBuilder():
     BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md", "IDENTITY.md"]
-    def __init__(self):
-        self.skill_loader = SkillsLocader(Path("."))
+    def __init__(self, skill_loader: SkillsLocader | None = None):
+        self.skill_loader = skill_loader or SkillsLocader()
         self.toolExecutor = ToolExecutor()
         current_dir = Path.cwd()
         self.workspace = find_project_root(start_dir = current_dir) / "workspace"
@@ -211,7 +210,7 @@ class ContextBuilder():
             Your workspace is at: {workspace_path}
             - Memory files: {workspace_path}/memory/MEMORY.md
             - Daily notes: {workspace_path}/memory/YYYY-MM-DD.md
-            - Custom skills: {workspace_path}/skills/{{skill-name}}/SKILL.md
+            - Skills are managed in database via tools: list_skills / get_skill
             
             IMPORTANT: When responding to direct questions or conversations, reply directly with your text response.
             Only use the 'message' tool when you need to send a message to a specific chat channel (like WhatsApp).
@@ -234,4 +233,3 @@ class ContextBuilder():
 
     def add_message(self,message:Message):
         self.history_message.append(message)
-

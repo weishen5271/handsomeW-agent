@@ -1,5 +1,4 @@
 from dotenv import load_dotenv
-from pathlib import Path
 from typing import Callable, Optional, Tuple
 import json
 import re
@@ -18,14 +17,20 @@ from tools.builtin.skill_tool import GetSkillTool, ListSkillsTool
 
 
 class ReactAgent(BaseAgent):
-    def __init__(self, name: str, llm: MyAgentsLLM, system_prompt: str):
+    def __init__(
+        self,
+        name: str,
+        llm: MyAgentsLLM,
+        system_prompt: str,
+        skill_loader: SkillsLocader | None = None,
+    ):
         super().__init__()
         self.name = name
         self.llm = llm
         self.system_prompt = system_prompt
         self._running_status = True
-        self.skill_loader = SkillsLocader(Path("."))
-        self.context = ContextBuilder()
+        self.skill_loader = skill_loader or SkillsLocader()
+        self.context = ContextBuilder(skill_loader=self.skill_loader)
         self._register_default_tools()
 
     def _emit_event(
@@ -185,8 +190,8 @@ class ReactAgent(BaseAgent):
         self.context.add_tools(ReadFileTool())
         self.context.add_tools(WriteFileTool())
         self.context.add_tools(SearchTool())
-        self.context.add_tools(ListSkillsTool())
-        self.context.add_tools(GetSkillTool())
+        self.context.add_tools(ListSkillsTool(loader=self.skill_loader))
+        self.context.add_tools(GetSkillTool(loader=self.skill_loader))
         self.context.add_tools(ShellExecTool())
 
     def _parse_output(self, text: str) -> Tuple[Optional[str], Optional[str]]:

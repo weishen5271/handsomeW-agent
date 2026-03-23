@@ -6,7 +6,6 @@ from core import MyAgentsLLM
 from core.message import Message
 from tools.builtin.file_tool import ReadFileTool, WriteFileTool
 from core.skill import SkillsLocader
-from pathlib import Path
 from core.prompt import BASE_PROMPT_TEMPLATE
 from dotenv import load_dotenv
 from core.context import ContextBuilder
@@ -25,7 +24,7 @@ class LoopAgent(BaseAgent):
         self.llm = llm
         self.system_prompt = system_prompt
         self._running_status = True
-        self.skill_loader = SkillsLocader(Path("."))
+        self.skill_loader = SkillsLocader()
         self.context = ContextBuilder()
         self._register_default_tools()
         # 执行对超类的初始化

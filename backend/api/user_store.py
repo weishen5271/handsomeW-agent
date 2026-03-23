@@ -88,6 +88,29 @@ def init_db() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS user_skills (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL,
+                source TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL DEFAULT '',
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL,
+                UNIQUE(user_id, name)
+            )
+            """
+        )
+        conn.execute(
+            """
+            ALTER TABLE user_skills
+            ADD COLUMN IF NOT EXISTS content TEXT NOT NULL DEFAULT ''
+            """
+        )
+        conn.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_last_message
             ON chat_sessions(user_id, last_message_at DESC NULLS LAST, created_at DESC)
             """
@@ -96,6 +119,12 @@ def init_db() -> None:
             """
             CREATE INDEX IF NOT EXISTS idx_chat_memories_session_created
             ON chat_memories(session_id, created_at ASC)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_user_skills_user_enabled
+            ON user_skills(user_id, enabled)
             """
         )
 
@@ -266,6 +295,7 @@ def update_user(
 
 def delete_user(user_id: int) -> bool:
     with _connect() as conn:
+        conn.execute("DELETE FROM user_skills WHERE user_id = %s", (user_id,))
         conn.execute("DELETE FROM chat_memories WHERE user_id = %s", (user_id,))
         conn.execute("DELETE FROM chat_sessions WHERE user_id = %s", (user_id,))
         conn.execute("DELETE FROM user_llm_configs WHERE user_id = %s", (user_id,))
@@ -430,3 +460,141 @@ def upsert_user_llm_config(
     if row is None:
         raise RuntimeError("保存用户 LLM 配置失败")
     return row
+
+
+def list_user_skills(user_id: int) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT user_id, name, path, source, description, content, enabled, created_at, updated_at
+            FROM user_skills
+            WHERE user_id = %s
+            ORDER BY name ASC
+            """,
+            (user_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def sync_user_skills(user_id: int, discovered_skills: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    now = _utc_now()
+    with _connect() as conn:
+        for skill in discovered_skills:
+            name = str(skill.get("name", "")).strip()
+            path = str(skill.get("path", "")).strip()
+            source = str(skill.get("source", "")).strip()
+            description = str(skill.get("description", "")).strip()
+            content = str(skill.get("content", ""))
+            if not name or not path or not source:
+                continue
+
+            existing = conn.execute(
+                """
+                SELECT id, enabled, created_at
+                FROM user_skills
+                WHERE user_id = %s AND name = %s
+                """,
+                (user_id, name),
+            ).fetchone()
+            if existing is None:
+                conn.execute(
+                    """
+                    INSERT INTO user_skills(user_id, name, path, source, description, content, enabled, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s)
+                    """,
+                    (user_id, name, path, source, description, content, now, now),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE user_skills
+                    SET path = %s, source = %s, description = %s, content = %s, updated_at = %s
+                    WHERE user_id = %s AND name = %s
+                    """,
+                    (path, source, description, content, now, user_id, name),
+                )
+
+    return list_user_skills(user_id)
+
+
+def upsert_user_skills_enabled(user_id: int, skill_enabled_map: dict[str, bool]) -> list[dict[str, Any]]:
+    now = _utc_now()
+    with _connect() as conn:
+        for name, enabled in skill_enabled_map.items():
+            safe_name = name.strip()
+            if not safe_name:
+                continue
+            conn.execute(
+                """
+                UPDATE user_skills
+                SET enabled = %s, updated_at = %s
+                WHERE user_id = %s AND name = %s
+                """,
+                (bool(enabled), now, user_id, safe_name),
+            )
+
+    return list_user_skills(user_id)
+
+
+def delete_user_skill(user_id: int, name: str) -> bool:
+    safe_name = name.strip()
+    if not safe_name:
+        return False
+
+    with _connect() as conn:
+        deleted = (
+            conn.execute(
+                """
+                DELETE FROM user_skills
+                WHERE user_id = %s AND name = %s
+                """,
+                (user_id, safe_name),
+            ).rowcount
+            > 0
+        )
+    return deleted
+
+
+def add_user_skill(
+    user_id: int,
+    name: str,
+    path: str,
+    source: str,
+    description: str = "",
+    content: str = "",
+    enabled: bool = True,
+) -> dict[str, Any]:
+    now = _utc_now()
+    with _connect() as conn:
+        existing = conn.execute(
+            """
+            SELECT user_id, name, path, source, description, content, enabled, created_at, updated_at
+            FROM user_skills
+            WHERE user_id = %s AND name = %s
+            """,
+            (user_id, name),
+        ).fetchone()
+
+        if existing is None:
+            conn.execute(
+                """
+                INSERT INTO user_skills(user_id, name, path, source, description, content, enabled, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (user_id, name, path, source, description, content, bool(enabled), now, now),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE user_skills
+                SET path = %s, source = %s, description = %s, content = %s, enabled = %s, updated_at = %s
+                WHERE user_id = %s AND name = %s
+                """,
+                (path, source, description, content, bool(enabled), now, user_id, name),
+            )
+
+    rows = list_user_skills(user_id)
+    for row in rows:
+        if row["name"] == name:
+            return row
+    raise RuntimeError(f"保存用户技能失败: {name}")

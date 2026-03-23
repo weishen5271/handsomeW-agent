@@ -38,6 +38,10 @@ DEBUG=true
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/handsomew_agent
 CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000
 # CORS_ALLOW_ORIGIN_REGEX=^https://.*\.example\.com$
+# Optional: Skill shop (GitHub topic source by default)
+# SKILL_SHOP_GITHUB_TOPIC=codex-skill
+# Optional: custom fallback index
+# SKILL_SHOP_INDEX_URL=https://example.com/skill-index.json
 # GRAPH_RAG_ENV_FILE=/absolute/path/to/.env
 ```
 

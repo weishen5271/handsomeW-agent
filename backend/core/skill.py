@@ -2,51 +2,70 @@ import json
 import os
 import re
 import shutil
-from pathlib import Path
-
-BUILTIN_SKILLS_DIR = Path(__file__).parent.parent / "skills"
+from typing import Iterable
 
 
 class SkillsLocader:
-    def __init__(self, workspace: Path, builtin_skills_dir: Path = None):
-        self.workspace = workspace
-        self.workspace_skills = workspace / "skills"
-        self.builtin_skills = builtin_skills_dir or BUILTIN_SKILLS_DIR
+    def __init__(
+        self,
+        skills: list[dict[str, str]] | None = None,
+        allowed_skill_names: Iterable[str] | None = None,
+    ):
+        self.allowed_skill_names = set(allowed_skill_names) if allowed_skill_names is not None else None
+        self._skills_by_name: dict[str, dict[str, str]] = {}
+        for one in skills or []:
+            name = str(one.get("name", "")).strip()
+            if not name:
+                continue
+            self._skills_by_name[name] = {
+                "name": name,
+                "path": str(one.get("path", "")).strip(),
+                "source": str(one.get("source", "")).strip(),
+                "description": str(one.get("description", "")).strip(),
+                "content": str(one.get("content", "")),
+            }
 
     def list_skills(self, filter_unavailable: bool = True) -> list[dict[str, str]]:
-        skills = []
-        if self.workspace_skills.exists():
-            for skill_dir in self.workspace_skills.iterdir():
-                if not skill_dir.is_dir():
-                    continue
-                skill_file = skill_dir / "SKILL.md"
-                if skill_file.exists():
-                    skills.append(
-                        {"name": skill_dir.name, "path": str(skill_file), "source": "workspace"}
-                    )
-
-        if self.builtin_skills and self.builtin_skills.exists():
-            for skill_dir in self.builtin_skills.iterdir():
-                if not skill_dir.is_dir():
-                    continue
-                skill_file = skill_dir / "SKILL.md"
-                if skill_file.exists() and not any(s["name"] == skill_dir.name for s in skills):
-                    skills.append(
-                        {"name": skill_dir.name, "path": str(skill_file), "source": "builtin"}
-                    )
+        skills = [
+            {"name": one["name"], "path": one["path"], "source": one["source"]}
+            for one in self._skills_by_name.values()
+        ]
+        if self.allowed_skill_names is not None:
+            skills = [s for s in skills if s["name"] in self.allowed_skill_names]
 
         if filter_unavailable:
             return [s for s in skills if self._check_requirements(self._get_skill_meta(s["name"]))]
         return skills
 
     def load_skill(self, skill_name: str):
-        workspace_skill_file = self.workspace_skills / skill_name / "SKILL.md"
-        if workspace_skill_file.exists():
-            return workspace_skill_file.read_text(encoding="utf-8")
-        builtin_skill_file = self.builtin_skills / skill_name / "SKILL.md"
-        if builtin_skill_file.exists():
-            return builtin_skill_file.read_text(encoding="utf-8")
-        return None
+        if self.allowed_skill_names is not None and skill_name not in self.allowed_skill_names:
+            return None
+
+        row = self._skills_by_name.get(skill_name)
+        if row is None:
+            return None
+        content = row.get("content", "")
+        return content or None
+
+    def list_skills_detail(self, filter_unavailable: bool = False) -> list[dict[str, str | bool]]:
+        details: list[dict[str, str | bool]] = []
+        for skill in self.list_skills(filter_unavailable=False):
+            skill_meta = self._get_skill_meta(skill["name"])
+            available = self._check_requirements(skill_meta)
+            requires = self._get_missing_requirements(skill_meta) if not available else ""
+            one: dict[str, str | bool] = {
+                "name": skill["name"],
+                "path": skill["path"],
+                "source": skill["source"],
+                "description": self._get_skill_description(skill["name"]),
+                "available": available,
+                "missing_requirements": requires,
+            }
+            details.append(one)
+
+        if filter_unavailable:
+            return [item for item in details if bool(item["available"])]
+        return details
 
     def load_skill_summary(self) -> str:
         all_skills = self.list_skills(filter_unavailable=False)
@@ -153,6 +172,6 @@ class SkillsLocader:
 
 
 if __name__ == "__main__":
-    skill_loader = SkillsLocader(Path("."))
+    skill_loader = SkillsLocader()
     skills = skill_loader.load_skill_summary()
     print(skills)

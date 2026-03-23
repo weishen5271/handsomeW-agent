@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Activity,
+  Download,
   Bot,
   Database,
   Image,
   LayoutDashboard,
   Loader2,
+  Package,
   LogOut,
   MessageSquare,
   Plus,
@@ -14,10 +16,13 @@ import {
   Settings,
   Shield,
   ShieldAlert,
+  ShoppingBag,
   Sparkles,
+  Star,
   Trash2,
   User,
   UserPlus,
+  X,
 } from "lucide-react";
 import AlarmsPanel from "./components/AlarmsPanel";
 import DashboardPanel from "./components/DashboardPanel";
@@ -95,15 +100,75 @@ type UserLLMConfig = {
   updated_at: string;
 };
 
+type UserSkillConfig = {
+  user_id: number;
+  name: string;
+  path: string;
+  source: string;
+  description: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type SkillShopItem = {
+  external_id: string;
+  name: string;
+  source: string;
+  description: string;
+  repo_url: string;
+  skill_md_url: string;
+  icon_url: string;
+  tag: string;
+  version: string;
+  downloads: number;
+  stars: number;
+  available: boolean;
+  missing_requirements: string;
+  added: boolean;
+};
+
+type SkillShopListResponse = {
+  items: SkillShopItem[];
+  page: number;
+  page_size: number;
+  has_more: boolean;
+  total: number | null;
+};
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 const AGENT_API = `${API_BASE_URL}/agents/react/chat/stream`;
 const TOKEN_KEY = "lumina_auth_token";
+const SKILL_SHOP_PAGE_SIZE = 12;
+const SKILL_SHOP_ACCENT_CLASSES = [
+  "bg-blue-50 text-blue-600 border-blue-200",
+  "bg-emerald-50 text-emerald-600 border-emerald-200",
+  "bg-violet-50 text-violet-600 border-violet-200",
+  "bg-amber-50 text-amber-600 border-amber-200",
+  "bg-cyan-50 text-cyan-600 border-cyan-200",
+  "bg-rose-50 text-rose-600 border-rose-200",
+];
 
 function nowTag() {
   return new Date().toLocaleTimeString("zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatCompactCount(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  if (value >= 10000) return `${(value / 10000).toFixed(1).replace(/\.0$/, "")}万`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}千`;
+  return String(Math.floor(value));
+}
+
+function skillAccentClass(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) % SKILL_SHOP_ACCENT_CLASSES.length;
+  }
+  return SKILL_SHOP_ACCENT_CLASSES[Math.abs(hash) % SKILL_SHOP_ACCENT_CLASSES.length];
 }
 
 function parseBlocks(chunk: string): StreamEvent[] {
@@ -255,6 +320,20 @@ export default function App() {
   const [llmBaseUrl, setLlmBaseUrl] = useState("https://api.openai.com/v1");
   const [llmApiKey, setLlmApiKey] = useState("");
   const [llmApiKeySet, setLlmApiKeySet] = useState(false);
+  const [llmSkills, setLlmSkills] = useState<UserSkillConfig[]>([]);
+  const [skillShopItems, setSkillShopItems] = useState<SkillShopItem[]>([]);
+  const [addingSkillName, setAddingSkillName] = useState("");
+  const [deletingSkillName, setDeletingSkillName] = useState("");
+  const [shopModalOpen, setShopModalOpen] = useState(false);
+  const [skillShopSearch, setSkillShopSearch] = useState("");
+  const [skillShopSort, setSkillShopSort] = useState<"comprehensive" | "downloads" | "stars" | "latest">(
+    "comprehensive",
+  );
+  const [skillShopPage, setSkillShopPage] = useState(1);
+  const [skillShopHasMore, setSkillShopHasMore] = useState(false);
+  const [skillShopLoading, setSkillShopLoading] = useState(false);
+  const [skillShopLoadingMore, setSkillShopLoadingMore] = useState(false);
+  const skillShopRequestIdRef = useRef(0);
   const [llmLoading, setLlmLoading] = useState(false);
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmError, setLlmError] = useState("");
@@ -270,6 +349,16 @@ export default function App() {
   );
 
   const isAdmin = currentUser?.role === "admin";
+  const skillShopDisplayItems = useMemo(() => {
+    if (skillShopSort === "comprehensive") return skillShopItems;
+    return [...skillShopItems].sort((a, b) => {
+      if (skillShopSort === "downloads") return (b.downloads ?? 0) - (a.downloads ?? 0);
+      if (skillShopSort === "stars") return (b.stars ?? 0) - (a.stars ?? 0);
+      const av = (a.version || "").replace(/^v/i, "");
+      const bv = (b.version || "").replace(/^v/i, "");
+      return bv.localeCompare(av, undefined, { numeric: true, sensitivity: "base" });
+    });
+  }, [skillShopItems, skillShopSort]);
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -298,6 +387,17 @@ export default function App() {
     setLlmBaseUrl("https://api.openai.com/v1");
     setLlmApiKey("");
     setLlmApiKeySet(false);
+    setLlmSkills([]);
+    setSkillShopItems([]);
+    setAddingSkillName("");
+    setDeletingSkillName("");
+    setShopModalOpen(false);
+    setSkillShopSearch("");
+    setSkillShopSort("comprehensive");
+    setSkillShopPage(1);
+    setSkillShopHasMore(false);
+    setSkillShopLoading(false);
+    setSkillShopLoadingMore(false);
     setLlmError("");
     setLlmSuccess("");
   };
@@ -503,10 +603,6 @@ export default function App() {
   };
 
   const fetchUserLlmConfig = async () => {
-    setLlmLoading(true);
-    setLlmError("");
-    setLlmSuccess("");
-
     try {
       const config = await apiRequest<UserLLMConfig | null>("/llm-config", { method: "GET" });
       if (!config) {
@@ -522,9 +618,107 @@ export default function App() {
       setLlmApiKeySet(config.api_key_set);
     } catch (error) {
       setLlmError(error instanceof Error ? error.message : "加载模型配置失败");
+    }
+  };
+
+  const fetchUserSkillConfig = async () => {
+    try {
+      const skills = await apiRequest<UserSkillConfig[]>("/skill-config", { method: "GET" });
+      setLlmSkills(skills);
+    } catch (error) {
+      setLlmError(error instanceof Error ? error.message : "加载 Skill 配置失败");
+    }
+  };
+
+  const fetchSkillShopItems = async (reset = false, keyword?: string) => {
+    const q = (keyword ?? skillShopSearch).trim();
+    const targetPage = reset ? 1 : skillShopPage + 1;
+    if (!reset && !skillShopHasMore) return;
+    const requestId = Date.now();
+    skillShopRequestIdRef.current = requestId;
+    if (reset) {
+      setSkillShopLoading(true);
+    } else {
+      setSkillShopLoadingMore(true);
+    }
+
+    try {
+      const params = new URLSearchParams();
+      params.set("page", String(targetPage));
+      params.set("page_size", String(SKILL_SHOP_PAGE_SIZE));
+      if (q) params.set("q", q);
+
+      const data = await apiRequest<SkillShopListResponse>(`/skill-shop?${params.toString()}`, { method: "GET" });
+      if (skillShopRequestIdRef.current !== requestId) return;
+      setSkillShopItems((prev) => (reset ? data.items : [...prev, ...data.items]));
+      setSkillShopPage(data.page);
+      setSkillShopHasMore(data.has_more);
+    } catch (error) {
+      setLlmError(error instanceof Error ? error.message : "加载 Skill 商店失败");
+    } finally {
+      if (skillShopRequestIdRef.current === requestId) {
+        setSkillShopLoading(false);
+        setSkillShopLoadingMore(false);
+      }
+    }
+  };
+
+  const loadLlmAndSkillConfig = async () => {
+    setLlmLoading(true);
+    setLlmError("");
+    setLlmSuccess("");
+    try {
+      await Promise.all([fetchUserLlmConfig(), fetchUserSkillConfig(), fetchSkillShopItems(true)]);
     } finally {
       setLlmLoading(false);
     }
+  };
+
+  const addSkillToCurrentUser = async (shopItem: SkillShopItem) => {
+    if (!shopItem.external_id.trim()) return;
+    setAddingSkillName(shopItem.external_id);
+    setLlmError("");
+    setLlmSuccess("");
+    try {
+      await apiRequest<UserSkillConfig>("/skill-shop/add", {
+        method: "POST",
+        body: JSON.stringify({
+          external_id: shopItem.external_id,
+          enabled: true,
+        }),
+      });
+      await Promise.all([fetchUserSkillConfig(), fetchSkillShopItems(true)]);
+      setLlmSuccess(`已加入 Skill：${shopItem.name}`);
+    } catch (error) {
+      setLlmError(error instanceof Error ? error.message : "加入 Skill 失败");
+    } finally {
+      setAddingSkillName("");
+    }
+  };
+
+  const removeSkillFromCurrentUser = async (skill: UserSkillConfig) => {
+    const target = skill.name.trim();
+    if (!target) return;
+    if (!window.confirm(`确认删除 Skill「${target}」吗？`)) return;
+    setDeletingSkillName(target);
+    setLlmError("");
+    setLlmSuccess("");
+    try {
+      await apiRequest<{ status: string }>(`/skill-config/${encodeURIComponent(target)}`, {
+        method: "DELETE",
+      });
+      await Promise.all([fetchUserSkillConfig(), fetchSkillShopItems(true)]);
+      setLlmSuccess(`已删除 Skill：${target}`);
+    } catch (error) {
+      setLlmError(error instanceof Error ? error.message : "删除 Skill 失败");
+    } finally {
+      setDeletingSkillName("");
+    }
+  };
+
+  const openSkillShopModal = async () => {
+    setShopModalOpen(true);
+    await fetchSkillShopItems(true);
   };
 
   useEffect(() => {
@@ -552,10 +746,19 @@ export default function App() {
       void fetchUsers();
     }
     if (viewMode === "llm") {
-      void fetchUserLlmConfig();
+      void loadLlmAndSkillConfig();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, isAdmin]);
+
+  useEffect(() => {
+    if (!shopModalOpen) return;
+    const timer = window.setTimeout(() => {
+      void fetchSkillShopItems(true);
+    }, 250);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skillShopSearch]);
 
   const submitAuth = async () => {
     const username = authUsername.trim();
@@ -778,6 +981,15 @@ export default function App() {
       const next = await apiRequest<UserLLMConfig>("/llm-config", {
         method: "PUT",
         body: JSON.stringify(payload),
+      });
+      await apiRequest<UserSkillConfig[]>("/skill-config", {
+        method: "PUT",
+        body: JSON.stringify({
+          skills: llmSkills.map((skill) => ({
+            name: skill.name,
+            enabled: skill.enabled,
+          })),
+        }),
       });
       setLlmApiKeySet(next.api_key_set);
       setLlmApiKey("");
@@ -1107,6 +1319,73 @@ export default function App() {
                     />
                   </label>
 
+                  <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-slate-700">Skills（用户隔离）</p>
+                      <button
+                        type="button"
+                        className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 transition hover:bg-slate-50 hover:text-blue-600"
+                        onClick={() => void openSkillShopModal()}
+                      >
+                        <ShoppingBag size={14} />
+                        Skill 商店
+                      </button>
+                    </div>
+                    {!llmSkills.length ? (
+                      <p className="text-sm text-slate-500">当前没有可配置的 Skill。</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {llmSkills.map((skill) => (
+                          <div
+                            key={skill.name}
+                            className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"
+                          >
+                            <label className="flex min-w-0 flex-1 items-start gap-2">
+                              <input
+                                type="checkbox"
+                                checked={skill.enabled}
+                                onChange={(e) =>
+                                  setLlmSkills((prev) =>
+                                    prev.map((item) =>
+                                      item.name === skill.name
+                                        ? {
+                                            ...item,
+                                            enabled: e.target.checked,
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                                className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="min-w-0">
+                                <span className="block text-sm font-semibold text-slate-700">
+                                  {skill.name}
+                                  <span className="ml-2 text-xs font-normal text-slate-500">({skill.source})</span>
+                                </span>
+                                <span className="block truncate text-xs text-slate-500">{skill.path}</span>
+                                <span className="block text-xs text-slate-600">{skill.description || "无描述"}</span>
+                              </span>
+                            </label>
+                            <button
+                              type="button"
+                              className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-lg border border-red-200 px-2 text-xs text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => void removeSkillFromCurrentUser(skill)}
+                              disabled={deletingSkillName === skill.name}
+                            >
+                              {deletingSkillName === skill.name ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={14} />
+                              )}
+                              删除
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <button
                     type="button"
                     className="inline-flex h-10 items-center justify-center rounded-xl bg-blue-600 px-4 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
@@ -1118,6 +1397,148 @@ export default function App() {
                 </div>
               )}
             </div>
+            {shopModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+                <div className="flex h-[78vh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-[#ececf2] shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                    <p className="text-base font-semibold text-slate-800">Skill 商店</p>
+                    <button
+                      type="button"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                      onClick={() => setShopModalOpen(false)}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="border-b border-slate-200 bg-[#ececf2] px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <input
+                        className="h-12 w-full rounded-2xl border border-slate-200/70 bg-white px-4 text-sm text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                        placeholder="搜索 skill 名称、来源、描述..."
+                        value={skillShopSearch}
+                        onChange={(e) => setSkillShopSearch(e.target.value)}
+                      />
+                      <select
+                        className="h-12 min-w-[132px] rounded-2xl border border-slate-200/70 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                        value={skillShopSort}
+                        onChange={(e) =>
+                          setSkillShopSort(
+                            e.target.value as "comprehensive" | "downloads" | "stars" | "latest",
+                          )
+                        }
+                      >
+                        <option value="comprehensive">综合排序</option>
+                        <option value="downloads">下载量优先</option>
+                        <option value="stars">星标优先</option>
+                        <option value="latest">版本优先</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div
+                    className="min-h-0 flex-1 overflow-y-auto bg-[#ececf2] p-5"
+                    onScroll={(e) => {
+                      const el = e.currentTarget;
+                      const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
+                      if (nearBottom && skillShopHasMore && !skillShopLoadingMore && !skillShopLoading) {
+                        void fetchSkillShopItems(false);
+                      }
+                    }}
+                  >
+                    {skillShopLoading ? (
+                      <div className="flex items-center justify-center py-8 text-sm text-slate-500">
+                        <Loader2 size={14} className="mr-2 animate-spin text-blue-600" />
+                        加载中...
+                      </div>
+                    ) : !skillShopItems.length ? (
+                      <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-8 text-center text-sm text-slate-500">
+                        没有匹配的 Skill
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        {skillShopDisplayItems.map((item) => {
+                          const iconText = item.name.trim().slice(0, 1).toUpperCase() || "S";
+                          const iconStyle = skillAccentClass(item.name);
+                          return (
+                            <article
+                              key={item.external_id}
+                              className="rounded-3xl border border-slate-200/80 bg-white/95 p-5 shadow-sm transition hover:shadow-md"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex min-w-0 items-start gap-3">
+                                  {item.icon_url ? (
+                                    <img
+                                      src={item.icon_url}
+                                      alt={item.name}
+                                      className="h-14 w-14 rounded-2xl border border-slate-200 object-cover"
+                                    />
+                                  ) : (
+                                    <div
+                                      className={`inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border text-2xl font-semibold ${iconStyle}`}
+                                    >
+                                      {iconText}
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xl font-semibold text-slate-800">{item.name}</p>
+                                    <div className="mt-1 flex items-center gap-2">
+                                      {item.tag && (
+                                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                                          {item.tag}
+                                        </span>
+                                      )}
+                                      <span className="truncate text-xs text-slate-400">{item.source}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-9 shrink-0 items-center justify-center rounded-xl border border-blue-200 px-3 text-xs font-medium text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  disabled={item.added || addingSkillName === item.external_id}
+                                  onClick={() => void addSkillToCurrentUser(item)}
+                                >
+                                  {item.added ? "已加入" : addingSkillName === item.external_id ? "加入中..." : "加入"}
+                                </button>
+                              </div>
+                              <p
+                                className="mt-3 min-h-12 text-sm leading-6 text-slate-500"
+                                style={{
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: "vertical",
+                                  overflow: "hidden",
+                                }}
+                              >
+                                {item.description || "暂无描述"}
+                              </p>
+                              <div className="mt-4 flex items-center gap-4 text-sm text-slate-400">
+                                <span className="inline-flex items-center gap-1">
+                                  <Download size={14} />
+                                  {formatCompactCount(item.downloads)}
+                                </span>
+                                <span className="inline-flex items-center gap-1">
+                                  <Star size={14} />
+                                  {formatCompactCount(item.stars)}
+                                </span>
+                                <span className="inline-flex items-center gap-1">
+                                  <Package size={14} />
+                                  {item.version || "v0.1.0"}
+                                </span>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {skillShopLoadingMore && (
+                      <div className="py-2 text-center text-xs text-slate-500">正在加载更多...</div>
+                    )}
+                    {!skillShopLoading && skillShopHasMore && !skillShopLoadingMore && (
+                      <div className="py-2 text-center text-xs text-slate-500">下滑加载更多...</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
         ) : viewMode === "users" && isAdmin ? (
           <section className="flex-1 overflow-y-auto bg-slate-50/30 p-6">

@@ -1,11 +1,11 @@
 import asyncio
 import importlib
 import sys
-from pathlib import Path
 from typing import Any, AsyncIterator
 
 from core.message import Message
 from core.llm import MyAgentsLLM
+from core.skill import SkillsLocader
 
 from api.schemas import AgentType, ChatMessage
 from api.user_store import (
@@ -13,13 +13,12 @@ from api.user_store import (
     create_chat_session,
     get_chat_session,
     get_user_llm_config,
+    list_user_skills,
     list_chat_memories,
 )
-from rag import GraphRAGBridge
 
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful ReAct assistant."
-_graph_rag_bridge = GraphRAGBridge()
 
 
 def _load_react_agent_class():
@@ -34,7 +33,7 @@ def _load_react_agent_class():
 
 class AgentService:
     def __init__(self) -> None:
-        self.graph_rag_bridge = _graph_rag_bridge
+        pass
 
     def _build_llm(self, user_id: int) -> MyAgentsLLM:
         config = get_user_llm_config(user_id)
@@ -47,6 +46,11 @@ class AgentService:
                 "api_key": config.get("api_key"),
             }
         return MyAgentsLLM(**llm_kwargs)
+
+    def _build_user_skill_loader(self, user_id: int) -> SkillsLocader:
+        skill_rows = list_user_skills(user_id=user_id)
+        enabled_names = [item["name"] for item in skill_rows if item.get("enabled")]
+        return SkillsLocader(skills=skill_rows, allowed_skill_names=enabled_names or [])
 
     def _resolve_session_id(self, user_id: int, session_id: str | None) -> str:
         if session_id:
@@ -129,6 +133,7 @@ class AgentService:
             name=f"{agent_type.value}-react-runner",
             llm=llm,
             system_prompt=effective_system_prompt,
+            skill_loader=self._build_user_skill_loader(user_id),
         )
         self._prime_agent_context(react_agent=react_agent, history_messages=history_messages)
         result = await react_agent.run(input_str=user_input, verbose=False)
@@ -205,6 +210,7 @@ class AgentService:
             name=f"{agent_type.value}-react-runner",
             llm=llm,
             system_prompt=effective_system_prompt,
+            skill_loader=self._build_user_skill_loader(user_id),
         )
         self._prime_agent_context(react_agent=react_agent, history_messages=history_messages)
 
@@ -293,19 +299,12 @@ class AgentService:
         enable_rag: bool,
         llm: MyAgentsLLM,
     ) -> tuple[str, dict[str, Any]]:
+        _ = user_input
+        _ = enable_rag
+        _ = llm
         base_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
-        if not enable_rag:
-            return base_prompt, {"enabled": False, "reason": "disabled_by_request"}
-
-        rag_result = self.graph_rag_bridge.build_context(user_input, llm_client=llm)
-        rag_meta = rag_result.metadata
-        if not rag_result.context_text:
-            return base_prompt, rag_meta
-
-        enhanced_prompt = (
-            f"{base_prompt}\n\n"
-            "You are connected to an external GraphRAG knowledge context.\n"
-            "When relevant, prioritize the retrieved evidence below and avoid hallucinations.\n\n"
-            f"{rag_result.context_text}"
-        )
-        return enhanced_prompt, rag_meta
+        rag_meta = {
+            "enabled": False,
+            "reason": "temporarily_disabled_in_agent_service",
+        }
+        return base_prompt, rag_meta

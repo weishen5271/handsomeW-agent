@@ -252,12 +252,23 @@ def get_user_by_token(token: str) -> dict[str, Any] | None:
         return _public_user(row)
 
 
-def list_users() -> list[dict[str, Any]]:
+def list_users(page: int = 1, page_size: int = 10) -> tuple[list[dict[str, Any]], int]:
+    safe_page = max(page, 1)
+    safe_page_size = max(page_size, 1)
+    offset = (safe_page - 1) * safe_page_size
     with _connect() as conn:
+        total_row = conn.execute("SELECT COUNT(*) AS cnt FROM users").fetchone()
+        total = int(total_row["cnt"] if total_row else 0)
         rows = conn.execute(
-            "SELECT id, username, role, created_at FROM users ORDER BY created_at ASC"
+            """
+            SELECT id, username, role, created_at
+            FROM users
+            ORDER BY created_at ASC
+            LIMIT %s OFFSET %s
+            """,
+            (safe_page_size, offset),
         ).fetchall()
-        return [_public_user(row) for row in rows]
+        return ([_public_user(row) for row in rows], total)
 
 
 def update_user(

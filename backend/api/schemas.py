@@ -58,6 +58,13 @@ class UserPublic(BaseModel):
     created_at: datetime | str
 
 
+class UserListResponse(BaseModel):
+    items: list[UserPublic]
+    page: int = 1
+    page_size: int = 10
+    total: int = 0
+
+
 class UserRegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=32)
     password: str = Field(..., min_length=6, max_length=128)
@@ -185,6 +192,13 @@ class DigitalAssetResponse(DigitalAssetBase):
     updated_at: datetime | str
 
 
+class DigitalAssetListResponse(BaseModel):
+    items: list[DigitalAssetResponse]
+    page: int = 1
+    page_size: int = 10
+    total: int = 0
+
+
 class AssetRelationResponse(BaseModel):
     source_asset_id: str
     target_asset_id: str
@@ -259,6 +273,13 @@ class SceneSummaryResponse(SceneBase):
     created_at: datetime | str
     updated_at: datetime | str
     asset_count: int
+
+
+class SceneSummaryListResponse(BaseModel):
+    items: list[SceneSummaryResponse]
+    page: int = 1
+    page_size: int = 10
+    total: int = 0
 
 
 class SceneAssetsReplaceRequest(BaseModel):

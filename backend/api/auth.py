@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from psycopg import IntegrityError
 
 from api.schemas import (
@@ -7,6 +7,7 @@ from api.schemas import (
     UserLoginRequest,
     UserPublic,
     UserRegisterRequest,
+    UserListResponse,
     UserUpdateRequest,
 )
 from api.user_store import (
@@ -86,9 +87,19 @@ async def me(current_user: dict = Depends(get_current_user)) -> UserPublic:
     return UserPublic(**current_user)
 
 
-@router.get("/users", response_model=list[UserPublic])
-async def get_users(_: dict = Depends(get_current_admin)) -> list[UserPublic]:
-    return [UserPublic(**user) for user in list_users()]
+@router.get("/users", response_model=UserListResponse)
+async def get_users(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    _: dict = Depends(get_current_admin),
+) -> UserListResponse:
+    items, total = list_users(page=page, page_size=page_size)
+    return UserListResponse(
+        items=[UserPublic(**user) for user in items],
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
 
 
 @router.post("/users", response_model=UserPublic)

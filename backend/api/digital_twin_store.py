@@ -323,7 +323,15 @@ def _seed_digital_twin_data() -> None:
             )
 
 
-def list_assets(keyword: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+def list_assets(
+    keyword: str | None = None,
+    status: str | None = None,
+    page: int = 1,
+    page_size: int = 10,
+) -> tuple[list[dict[str, Any]], int]:
+    safe_page = max(page, 1)
+    safe_page_size = max(page_size, 1)
+    offset = (safe_page - 1) * safe_page_size
     clauses: list[str] = []
     params: list[Any] = []
     if keyword:
@@ -336,16 +344,26 @@ def list_assets(keyword: str | None = None, status: str | None = None) -> list[d
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     with _connect() as conn:
+        total_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM digital_assets
+            {where_sql}
+            """,
+            params,
+        ).fetchone()
+        total = int(total_row["cnt"] if total_row else 0)
         rows = conn.execute(
             f"""
             SELECT id, name, type, status, location, health, model_file, metadata, created_at, updated_at
             FROM digital_assets
             {where_sql}
             ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
             """,
-            params,
+            [*params, safe_page_size, offset],
         ).fetchall()
-        return [dict(row) for row in rows]
+        return ([dict(row) for row in rows], total)
 
 
 def create_asset(
@@ -442,7 +460,14 @@ def list_asset_relations(asset_id: str) -> list[dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
-def list_scenes(keyword: str | None = None) -> list[dict[str, Any]]:
+def list_scenes(
+    keyword: str | None = None,
+    page: int = 1,
+    page_size: int = 10,
+) -> tuple[list[dict[str, Any]], int]:
+    safe_page = max(page, 1)
+    safe_page_size = max(page_size, 1)
+    offset = (safe_page - 1) * safe_page_size
     where_sql = ""
     params: list[Any] = []
     if keyword:
@@ -451,6 +476,15 @@ def list_scenes(keyword: str | None = None) -> list[dict[str, Any]]:
         params.extend([kw, kw, kw])
 
     with _connect() as conn:
+        total_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM scene_configs sc
+            {where_sql}
+            """,
+            params,
+        ).fetchone()
+        total = int(total_row["cnt"] if total_row else 0)
         rows = conn.execute(
             f"""
             SELECT sc.id,
@@ -464,10 +498,11 @@ def list_scenes(keyword: str | None = None) -> list[dict[str, Any]]:
             {where_sql}
             GROUP BY sc.id, sc.name, sc.description, sc.created_at, sc.updated_at
             ORDER BY sc.created_at DESC
+            LIMIT %s OFFSET %s
             """,
-            params,
+            [*params, safe_page_size, offset],
         ).fetchall()
-        return [dict(row) for row in rows]
+        return ([dict(row) for row in rows], total)
 
 
 def create_scene(scene_id: str, name: str, description: str | None = None) -> dict[str, Any]:

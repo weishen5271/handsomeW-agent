@@ -49,10 +49,11 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
   return (
     <section className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
       <div className="mb-5 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-800">模型漫游 - 固定演示模型</h2>
-          <p className="text-slate-500">当前查看资产：{asset.name}</p>
-          <p className="text-slate-500">
+        <div className="space-y-1 text-sm text-slate-600">
+          <p>
+            当前资产：<span className="font-semibold text-slate-800">{asset.name}</span>
+          </p>
+          <p>
             模型文件：<span className="font-mono text-slate-700">{FIXED_MODEL.name}</span>
           </p>
         </div>

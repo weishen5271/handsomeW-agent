@@ -4,6 +4,28 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .table-th {
+    @apply px-3 py-2 text-center text-xs font-bold tracking-wider text-slate-500;
+  }
+
+  .table-td {
+    @apply px-3 py-2 text-center align-middle;
+  }
+
+  .btn-top-primary {
+    @apply inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300;
+  }
+
+  .btn-top-outline {
+    @apply inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 transition hover:bg-slate-50 hover:text-slate-800;
+  }
+
+  .btn-top-danger {
+    @apply inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 text-xs text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+}
+
 :root {
   font-family: Inter, "Noto Sans SC", sans-serif;
   line-height: 1.6;

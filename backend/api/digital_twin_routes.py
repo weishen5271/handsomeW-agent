@@ -20,6 +20,7 @@ from api.digital_twin_store import (
 )
 from api.schemas import (
     AssetRelationResponse,
+    DigitalAssetListResponse,
     DigitalAssetCreateRequest,
     DigitalAssetResponse,
     DigitalAssetUpdateRequest,
@@ -29,6 +30,7 @@ from api.schemas import (
     SceneRelationResponse,
     SceneRelationsReplaceRequest,
     SceneResponse,
+    SceneSummaryListResponse,
     SceneSummaryResponse,
     SceneUpdateRequest,
 )
@@ -36,14 +38,21 @@ from api.schemas import (
 router = APIRouter(prefix="/digital-twin", tags=["digital-twin"])
 
 
-@router.get("/assets", response_model=list[DigitalAssetResponse])
+@router.get("/assets", response_model=DigitalAssetListResponse)
 async def get_assets(
     keyword: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=200),
     _: dict = Depends(get_current_user),
-) -> list[DigitalAssetResponse]:
-    rows = list_assets(keyword=keyword, status=status_filter)
-    return [DigitalAssetResponse(**row) for row in rows]
+) -> DigitalAssetListResponse:
+    rows, total = list_assets(keyword=keyword, status=status_filter, page=page, page_size=page_size)
+    return DigitalAssetListResponse(
+        items=[DigitalAssetResponse(**row) for row in rows],
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
 
 
 @router.post("/assets", response_model=DigitalAssetResponse)
@@ -132,13 +141,20 @@ async def upsert_scene_instance_api(
     return row
 
 
-@router.get("/scenes", response_model=list[SceneSummaryResponse])
+@router.get("/scenes", response_model=SceneSummaryListResponse)
 async def get_scenes(
     keyword: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=200),
     _: dict = Depends(get_current_user),
-) -> list[SceneSummaryResponse]:
-    rows = list_scenes(keyword=keyword)
-    return [SceneSummaryResponse(**row) for row in rows]
+) -> SceneSummaryListResponse:
+    rows, total = list_scenes(keyword=keyword, page=page, page_size=page_size)
+    return SceneSummaryListResponse(
+        items=[SceneSummaryResponse(**row) for row in rows],
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
 
 
 @router.post("/scenes", response_model=SceneSummaryResponse)

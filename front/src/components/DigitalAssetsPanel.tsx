@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Box, Cpu, Database, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import PaginationControls from "./PaginationControls";
 
 export type AssetStatus = "Normal" | "Warning" | "Critical";
 
@@ -23,6 +24,13 @@ type ApiAsset = {
   health: number;
   model_file: string;
   metadata: Record<string, unknown>;
+};
+
+type AssetListResponse = {
+  items: ApiAsset[];
+  page: number;
+  page_size: number;
+  total: number;
 };
 
 type DigitalAssetsPanelProps = {
@@ -70,6 +78,9 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<AssetStatus | "all">("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [createForm, setCreateForm] = useState<AssetForm>(emptyForm);
@@ -83,23 +94,29 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
     [assets, detailAssetId],
   );
 
-  const fetchAssets = async () => {
+  const fetchAssets = async (targetPage = page, targetPageSize = pageSize) => {
     setLoading(true);
     setError("");
     try {
       const query = new URLSearchParams();
       if (search.trim()) query.set("keyword", search.trim());
       if (statusFilter !== "all") query.set("status", statusFilter);
-      const queryText = query.toString();
+      query.set("page", String(targetPage));
+      query.set("page_size", String(targetPageSize));
 
-      const response = await fetch(`${apiBaseUrl}/digital-twin/assets${queryText ? `?${queryText}` : ""}`, {
+      const response = await fetch(`${apiBaseUrl}/digital-twin/assets?${query.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {
         throw new Error("资产加载失败");
       }
-      const data = (await response.json()) as ApiAsset[];
-      setAssets(data.map(toUiAsset));
+      const data = (await response.json()) as AssetListResponse;
+      setAssets(data.items.map(toUiAsset));
+      setTotal(data.total);
+      const totalPages = Math.max(1, Math.ceil(data.total / targetPageSize));
+      if (targetPage > totalPages) {
+        setPage(totalPages);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "资产加载失败");
     } finally {
@@ -110,7 +127,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
   useEffect(() => {
     void fetchAssets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, page, pageSize]);
 
   const openCreate = () => {
     setCreateForm(emptyForm);
@@ -168,7 +185,8 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
       }
       setCreateForm(emptyForm);
       setShowCreateModal(false);
-      await fetchAssets();
+      setPage(1);
+      await fetchAssets(1, pageSize);
     } catch (e) {
       setError(e instanceof Error ? e.message : "资产新增失败");
     } finally {
@@ -228,7 +246,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
         setIsDetailEditing(false);
         setDetailForm(emptyForm);
       }
-      await fetchAssets();
+      await fetchAssets(page, pageSize);
     } catch (e) {
       setError(e instanceof Error ? e.message : "删除失败");
     }
@@ -238,17 +256,16 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
     return (
       <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
         <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <button
-              type="button"
-              onClick={() => setDetailAssetId(null)}
-              className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 transition hover:text-slate-700"
-            >
-              <ArrowLeft size={14} /> 返回数字资产库
-            </button>
-            <h2 className="text-3xl font-bold tracking-tight text-slate-800">资产详情</h2>
-            <p className="text-slate-500">在详情页编辑资产信息，新增资产请使用弹窗操作。</p>
-          </div>
+          <button
+            type="button"
+            onClick={() => setDetailAssetId(null)}
+            className="inline-flex items-center gap-1 text-sm text-slate-500 transition hover:text-slate-700"
+          >
+            <ArrowLeft size={14} /> 返回数字资产库
+          </button>
+          {detailAsset && (
+            <span className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-mono text-slate-600">{detailAsset.id}</span>
+          )}
           {detailAsset && (
             <div className="flex items-center gap-2">
               {isDetailEditing ? (
@@ -257,7 +274,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
                     type="button"
                     onClick={() => void saveDetailAsset()}
                     disabled={detailSaving}
-                    className="inline-flex h-10 items-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:bg-blue-300"
+                    className="btn-top-primary"
                   >
                     {detailSaving ? <Loader2 size={14} className="animate-spin" /> : "保存"}
                   </button>
@@ -276,7 +293,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
                       });
                       setIsDetailEditing(false);
                     }}
-                    className="h-10 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    className="btn-top-outline"
                   >
                     取消
                   </button>
@@ -285,7 +302,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
                 <button
                   type="button"
                   onClick={() => setIsDetailEditing(true)}
-                  className="h-10 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  className="btn-top-outline"
                 >
                   编辑
                 </button>
@@ -293,14 +310,14 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
               <button
                 type="button"
                 onClick={() => onOpenModelScene(detailAsset)}
-                className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+                className="btn-top-outline border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
               >
                 模型漫游
               </button>
               <button
                 type="button"
                 onClick={() => void removeAsset(detailAsset.id)}
-                className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-100"
+                className="btn-top-danger"
               >
                 删除资产
               </button>
@@ -403,44 +420,43 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-800">数字资产库</h2>
-          <p className="text-slate-500">接入 PostgreSQL / MongoDB / Neo4j 的统一资产管理视图（模型漫游仅在资产详情页开启）。</p>
-        </div>
+      <header className="mb-6 flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => void fetchAssets()}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-slate-700 transition hover:bg-slate-50"
+            className="btn-top-outline gap-2 text-slate-700"
           >
             <Database size={18} /> 同步资产
           </button>
           <button
             type="button"
             onClick={openCreate}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
+            className="btn-top-primary gap-2"
           >
             <Plus size={18} /> 新增资产
           </button>
         </div>
       </header>
 
-      <div className="mb-4 flex flex-wrap gap-3">
-        <div className="relative min-w-[240px] flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           <input
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 outline-none focus:border-blue-300"
+            className="h-9 w-56 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs outline-none focus:border-blue-300"
             placeholder="搜索资产名称、ID 或位置..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") void fetchAssets();
+              if (e.key === "Enter") {
+                setPage(1);
+                void fetchAssets(1, pageSize);
+              }
             }}
           />
         </div>
         <select
-          className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-300"
+          className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-blue-300"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as AssetStatus | "all")}
         >
@@ -451,8 +467,11 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
         </select>
         <button
           type="button"
-          onClick={() => void fetchAssets()}
-          className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-slate-700 transition hover:bg-slate-50"
+          onClick={() => {
+            setPage(1);
+            void fetchAssets(1, pageSize);
+          }}
+          className="btn-top-outline"
         >
           查询
         </button>
@@ -464,18 +483,19 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="bg-slate-50">
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">资产信息</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">类型</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">位置</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">健康度</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">状态</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">操作</th>
+              <th className="table-th">资产名称</th>
+              <th className="table-th">资产ID</th>
+              <th className="table-th">类型</th>
+              <th className="table-th">位置</th>
+              <th className="table-th">健康度</th>
+              <th className="table-th">状态</th>
+              <th className="table-th">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
                   <span className="inline-flex items-center gap-2">
                     <Loader2 size={14} className="animate-spin text-blue-600" /> 资产加载中...
                   </span>
@@ -483,27 +503,27 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
               </tr>
             ) : assets.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
                   暂无资产数据
                 </td>
               </tr>
             ) : (
               assets.map((asset) => (
-                <tr key={asset.id} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
+                <tr key={asset.id} className="cursor-pointer hover:bg-slate-50/60" onClick={() => openDetail(asset)}>
+                  <td className="table-td">
+                    <div className="flex items-center justify-center gap-3">
                       <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
                         {asset.type === "动力设备" ? <Cpu size={18} /> : <Box size={18} />}
                       </span>
                       <div>
                         <div className="text-sm font-bold text-slate-800">{asset.name}</div>
-                        <div className="font-mono text-xs text-slate-400">{asset.id}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">{asset.type}</td>
-                  <td className="px-4 py-3 text-sm text-slate-600">{asset.location}</td>
-                  <td className="px-4 py-3">
+                  <td className="table-td font-mono text-xs text-slate-500">{asset.id}</td>
+                  <td className="table-td text-sm text-slate-600">{asset.type}</td>
+                  <td className="table-td text-sm text-slate-600">{asset.location}</td>
+                  <td className="table-td">
                     <div className="flex items-center gap-2">
                       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
                         <div
@@ -514,7 +534,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
                       <span className="text-xs font-bold text-slate-600">{asset.health}%</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="table-td">
                     <span
                       className={`rounded-lg px-2 py-1 text-[10px] font-bold uppercase ${
                         asset.status === "Normal"
@@ -527,11 +547,14 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
                       {asset.status === "Normal" ? "正常" : asset.status === "Warning" ? "警告" : "危险"}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
+                  <td className="table-td">
+                    <div className="flex items-center justify-center gap-2">
                       <button
                         type="button"
-                        onClick={() => openDetail(asset)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDetail(asset);
+                        }}
                         className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
                       >
                         <span className="inline-flex items-center gap-1">
@@ -540,7 +563,10 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
                       </button>
                       <button
                         type="button"
-                        onClick={() => void removeAsset(asset.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void removeAsset(asset.id);
+                        }}
                         className="rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-600 transition hover:bg-red-100"
                       >
                         <Trash2 size={13} />
@@ -553,6 +579,16 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
           </tbody>
         </table>
       </div>
+      <PaginationControls
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={(nextPage) => setPage(nextPage)}
+        onPageSizeChange={(nextSize) => {
+          setPageSize(nextSize);
+          setPage(1);
+        }}
+      />
 
       {showCreateModal && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/35 p-4">

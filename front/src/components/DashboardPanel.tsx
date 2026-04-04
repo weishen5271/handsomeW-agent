@@ -12,16 +12,12 @@ const trendData = [
 export default function DashboardPanel() {
   return (
     <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
-      <header className="mb-6 flex items-end justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-800">系统概览</h2>
-          <p className="text-slate-500">实时数字孪生监控与 RCA 状态。</p>
-        </div>
+      <div className="mb-4 flex justify-end">
         <div className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm md:flex">
           <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
           实时同步已激活
         </div>
-      </header>
+      </div>
 
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Activity} label="活动资产" value="1,284" trend="+12" color="blue" />

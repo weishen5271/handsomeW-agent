@@ -3,11 +3,6 @@ import { Activity, Globe, Server, ShieldCheck } from "lucide-react";
 export default function SystemStatusPanel() {
   return (
     <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
-      <header className="mb-6">
-        <h2 className="text-3xl font-bold tracking-tight text-slate-800">系统状态</h2>
-        <p className="text-slate-500">监控核心引擎、检索链路及数据同步状态。</p>
-      </header>
-
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

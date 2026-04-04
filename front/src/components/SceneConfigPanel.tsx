@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { GitBranch, Loader2, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
+import PaginationControls from "./PaginationControls";
 
 type AssetStatus = "Normal" | "Warning" | "Critical";
 
@@ -23,6 +24,13 @@ type ApiSceneSummary = {
   created_at: string;
   updated_at: string;
   asset_count: number;
+};
+
+type SceneListResponse = {
+  items: ApiSceneSummary[];
+  page: number;
+  page_size: number;
+  total: number;
 };
 
 type ApiSceneRelation = {
@@ -68,8 +76,12 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
 
   const [sceneKeyword, setSceneKeyword] = useState("");
   const [scenes, setScenes] = useState<ApiSceneSummary[]>([]);
+  const [scenePage, setScenePage] = useState(1);
+  const [scenePageSize, setScenePageSize] = useState(10);
+  const [sceneTotal, setSceneTotal] = useState(0);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [sceneDetail, setSceneDetail] = useState<ApiSceneDetail | null>(null);
+  const [showSceneDetail, setShowSceneDetail] = useState(false);
 
   const [allAssets, setAllAssets] = useState<ApiAsset[]>([]);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
@@ -112,23 +124,20 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
     return (await response.json()) as T;
   };
 
-  const fetchScenes = async (keepSelection = true) => {
+  const fetchScenes = async (targetPage = scenePage, targetPageSize = scenePageSize) => {
     setLoading(true);
     setError("");
     try {
       const query = new URLSearchParams();
       if (sceneKeyword.trim()) query.set("keyword", sceneKeyword.trim());
-      const list = await apiRequest<ApiSceneSummary[]>(`/digital-twin/scenes${query.toString() ? `?${query.toString()}` : ""}`);
-      setScenes(list);
-
-      if (list.length === 0) {
-        setSelectedSceneId(null);
-        setSceneDetail(null);
-        return;
-      }
-
-      if (!keepSelection || !selectedSceneId || !list.some((item) => item.id === selectedSceneId)) {
-        setSelectedSceneId(list[0].id);
+      query.set("page", String(targetPage));
+      query.set("page_size", String(targetPageSize));
+      const data = await apiRequest<SceneListResponse>(`/digital-twin/scenes?${query.toString()}`);
+      setScenes(data.items);
+      setSceneTotal(data.total);
+      const totalPages = Math.max(1, Math.ceil(data.total / targetPageSize));
+      if (targetPage > totalPages) {
+        setScenePage(totalPages);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载场景失败");
@@ -139,8 +148,8 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
 
   const fetchAllAssets = async () => {
     try {
-      const list = await apiRequest<ApiAsset[]>("/digital-twin/assets");
-      setAllAssets(list);
+      const list = await apiRequest<{ items: ApiAsset[] }>("/digital-twin/assets?page=1&page_size=200");
+      setAllAssets(list.items);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载资产失败");
     }
@@ -170,16 +179,10 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
   };
 
   useEffect(() => {
-    void fetchScenes(false);
+    void fetchScenes();
     void fetchAllAssets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!selectedSceneId) return;
-    void fetchSceneDetail(selectedSceneId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSceneId]);
+  }, [scenePage, scenePageSize]);
 
   const selectedAssets = useMemo(
     () => allAssets.filter((asset) => selectedAssetIds.includes(asset.id)),
@@ -219,6 +222,12 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
     ]);
   };
 
+  const openSceneDetail = async (sceneId: string) => {
+    setSelectedSceneId(sceneId);
+    setShowSceneDetail(true);
+    await fetchSceneDetail(sceneId);
+  };
+
   const createScene = async () => {
     if (!createSceneForm.id.trim() || !createSceneForm.name.trim()) {
       setError("请填写场景 ID 和名称");
@@ -240,7 +249,8 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
       setCreateSceneForm(emptySceneForm);
       setShowCreateScene(false);
       setSuccess("场景创建成功");
-      await fetchScenes(false);
+      setScenePage(1);
+      await fetchScenes(1, scenePageSize);
     } catch (e) {
       setError(e instanceof Error ? e.message : "创建场景失败");
     } finally {
@@ -267,7 +277,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
         }),
       });
       setSuccess("场景信息已更新");
-      await fetchScenes(true);
+      await fetchScenes(scenePage, scenePageSize);
       await fetchSceneDetail(selectedSceneId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "场景信息更新失败");
@@ -296,7 +306,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
       );
 
       setSuccess("场景资产已保存");
-      await fetchScenes(true);
+      await fetchScenes(scenePage, scenePageSize);
       await fetchSceneDetail(selectedSceneId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存场景资产失败");
@@ -342,7 +352,12 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
     try {
       await apiRequest<{ status: string }>(`/digital-twin/scenes/${sceneId}`, { method: "DELETE" });
       setSuccess("场景已删除");
-      await fetchScenes(false);
+      if (showSceneDetail && selectedSceneId === sceneId) {
+        setShowSceneDetail(false);
+        setSelectedSceneId(null);
+        setSceneDetail(null);
+      }
+      await fetchScenes(scenePage, scenePageSize);
     } catch (e) {
       setError(e instanceof Error ? e.message : "删除场景失败");
     } finally {
@@ -352,23 +367,25 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-800">场景配置</h2>
-          <p className="text-slate-500">按场景配置资产及上下游关系，上下游关系独立写入图数据库。</p>
-        </div>
+      <header className="mb-6 flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => void fetchScenes(true)}
-            className="inline-flex h-10 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-600 transition hover:border-slate-300"
+            onClick={() => {
+              if (showSceneDetail && selectedSceneId) {
+                void fetchSceneDetail(selectedSceneId);
+                return;
+              }
+              void fetchScenes();
+            }}
+            className="btn-top-outline"
           >
             <RefreshCw size={14} /> 刷新
           </button>
           <button
             type="button"
             onClick={() => setShowCreateScene((v) => !v)}
-            className="inline-flex h-10 items-center gap-1 rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+            className="btn-top-primary"
           >
             <Plus size={14} /> 新建场景
           </button>
@@ -403,14 +420,14 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                 type="button"
                 onClick={() => void createScene()}
                 disabled={saving}
-                className="inline-flex h-10 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:bg-blue-300"
+                className="btn-top-primary"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : "创建"}
               </button>
               <button
                 type="button"
                 onClick={() => setShowCreateScene(false)}
-                className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-600"
+                className="btn-top-outline"
               >
                 取消
               </button>
@@ -426,59 +443,105 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
         </section>
       )}
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-1">
-          <h3 className="mb-3 flex items-center gap-2 font-bold text-slate-800">
-            <GitBranch size={16} className="text-blue-600" /> 场景列表
-          </h3>
-          <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2">
-            <Search size={14} className="text-slate-400" />
-            <input
-              value={sceneKeyword}
-              onChange={(e) => setSceneKeyword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void fetchScenes(false);
+      {!showSceneDetail ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={sceneKeyword}
+                onChange={(e) => setSceneKeyword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    setScenePage(1);
+                    void fetchScenes(1, scenePageSize);
+                  }
+                }}
+                placeholder="输入关键字后回车"
+                className="h-9 w-56 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs outline-none focus:border-blue-300"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setScenePage(1);
+                void fetchScenes(1, scenePageSize);
               }}
-              placeholder="输入关键字后回车"
-              className="h-9 w-full border-none bg-transparent text-sm outline-none"
-            />
+              className="btn-top-outline"
+            >
+              查询
+            </button>
           </div>
-          <div className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
+          <div className="max-h-[620px] overflow-y-auto rounded-xl border border-slate-200">
             {loading && scenes.length === 0 ? (
-              <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                <Loader2 size={14} className="animate-spin text-blue-600" /> 加载场景中...
+              <div className="px-3 py-4 text-sm text-slate-500">
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 size={14} className="animate-spin text-blue-600" /> 加载场景中...
+                </span>
               </div>
             ) : scenes.length === 0 ? (
-              <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">暂无场景，请先创建。</p>
+              <p className="bg-slate-50 p-3 text-sm text-slate-500">暂无场景，请先创建。</p>
             ) : (
-              scenes.map((scene) => (
-                <button
-                  key={scene.id}
-                  type="button"
-                  onClick={() => setSelectedSceneId(scene.id)}
-                  className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                    selectedSceneId === scene.id
-                      ? "border-blue-200 bg-blue-50"
-                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">{scene.name}</p>
-                      <p className="font-mono text-xs text-slate-400">{scene.id}</p>
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">资产 {scene.asset_count}</span>
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-xs text-slate-500">{scene.description || "-"}</p>
-                </button>
-              ))
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="table-th">场景名称</th>
+                    <th className="table-th">场景ID</th>
+                    <th className="table-th">资产数</th>
+                    <th className="table-th">更新时间</th>
+                    <th className="table-th">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {scenes.map((scene) => (
+                    <tr key={scene.id} className="transition hover:bg-slate-50">
+                      <td className="table-td text-sm font-semibold text-slate-700">{scene.name}</td>
+                      <td className="table-td font-mono text-xs text-slate-500">{scene.id}</td>
+                      <td className="table-td text-sm text-slate-600">{scene.asset_count}</td>
+                      <td className="table-td text-xs text-slate-500">{new Date(scene.updated_at).toLocaleDateString()}</td>
+                      <td className="table-td">
+                        <button
+                          type="button"
+                          onClick={() => void openSceneDetail(scene.id)}
+                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 transition hover:bg-slate-50"
+                        >
+                          详情
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
+          <PaginationControls
+            page={scenePage}
+            pageSize={scenePageSize}
+            total={sceneTotal}
+            onPageChange={(nextPage) => setScenePage(nextPage)}
+            onPageSizeChange={(nextSize) => {
+              setScenePageSize(nextSize);
+              setScenePage(1);
+            }}
+          />
         </section>
-
-        <section className="space-y-5 xl:col-span-2">
+      ) : (
+        <section className="space-y-5">
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowSceneDetail(false);
+                setSelectedSceneId(null);
+                setSceneDetail(null);
+              }}
+              className="inline-flex items-center gap-1 text-sm text-slate-500 transition hover:text-slate-700"
+            >
+              <ArrowLeft size={14} /> 返回场景列表
+            </button>
+          </div>
           {!sceneDetail ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">请选择一个场景进行配置。</div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">场景详情加载中...</div>
           ) : (
             <>
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -487,7 +550,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                   <button
                     type="button"
                     onClick={() => void removeScene(sceneDetail.scene_id)}
-                    className="inline-flex h-9 items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 text-sm text-red-600 transition hover:bg-red-100"
+                    className="btn-top-danger"
                   >
                     <Trash2 size={14} /> 删除场景
                   </button>
@@ -514,7 +577,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                   type="button"
                   onClick={() => void saveSceneMeta()}
                   disabled={saving}
-                  className="mt-3 inline-flex h-10 items-center gap-1 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:bg-blue-300"
+                  className="btn-top-primary mt-3"
                 >
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} 保存场景信息
                 </button>
@@ -527,7 +590,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                     type="button"
                     onClick={() => void saveSceneAssets()}
                     disabled={saving}
-                    className="inline-flex h-10 items-center gap-1 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:bg-blue-300"
+                    className="btn-top-primary"
                   >
                     {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} 保存资产
                   </button>
@@ -563,14 +626,14 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                     <button
                       type="button"
                       onClick={() => setShowGraphModal(true)}
-                      className="inline-flex h-10 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-600 transition hover:border-slate-300"
+                      className="btn-top-outline"
                     >
                       查看图结构
                     </button>
                     <button
                       type="button"
                       onClick={addRelation}
-                      className="inline-flex h-10 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-600 transition hover:border-slate-300"
+                      className="btn-top-outline"
                     >
                       <Plus size={14} /> 新增关系
                     </button>
@@ -578,7 +641,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                       type="button"
                       onClick={() => void saveSceneRelations()}
                       disabled={saving}
-                      className="inline-flex h-10 items-center gap-1 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:bg-blue-300"
+                      className="btn-top-primary"
                     >
                       {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} 保存关系
                     </button>
@@ -652,7 +715,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
             </>
           )}
         </section>
-      </div>
+      )}
 
       {showGraphModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">

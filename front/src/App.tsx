@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Activity,
+  ChevronDown,
   Download,
   Bot,
   Database,
@@ -31,6 +32,7 @@ import type { DigitalAsset } from "./components/DigitalAssetsPanel";
 import SceneConfigPanel from "./components/SceneConfigPanel";
 import Scene3DPanel from "./components/Scene3DPanel";
 import SystemStatusPanel from "./components/SystemStatusPanel";
+import PaginationControls from "./components/PaginationControls";
 
 type ChatRole = "user" | "assistant";
 type ViewMode = "dashboard" | "chat" | "assets" | "scenes" | "scene3d" | "alarms" | "status" | "users" | "llm";
@@ -84,12 +86,6 @@ type AgentMemory = {
   created_at: string;
 };
 
-type EditableUser = {
-  username: string;
-  role: UserRole;
-  password: string;
-};
-
 type UserLLMConfig = {
   user_id: number;
   provider: string;
@@ -98,6 +94,13 @@ type UserLLMConfig = {
   api_key_set: boolean;
   created_at: string;
   updated_at: string;
+};
+
+type UserListResponse = {
+  items: AuthUser[];
+  page: number;
+  page_size: number;
+  total: number;
 };
 
 type UserSkillConfig = {
@@ -307,14 +310,24 @@ export default function App() {
   const [streamState, setStreamState] = useState<StreamState>({ loading: false, label: null });
   const [draft, setDraft] = useState<string>("");
   const chatRef = useRef<HTMLDivElement>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState("");
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersPageSize, setUsersPageSize] = useState(10);
+  const [usersTotal, setUsersTotal] = useState(0);
+  const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<UserRole>("user");
-  const [editStates, setEditStates] = useState<Record<number, EditableUser>>({});
+  const [editUserModalOpen, setEditUserModalOpen] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [editUsername, setEditUsername] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [editRole, setEditRole] = useState<UserRole>("user");
   const [llmProvider, setLlmProvider] = useState("openai");
   const [llmModel, setLlmModel] = useState("gpt-4o-mini");
   const [llmBaseUrl, setLlmBaseUrl] = useState("https://api.openai.com/v1");
@@ -375,6 +388,13 @@ export default function App() {
   const clearAuthSession = () => {
     setToken("");
     setCurrentUser(null);
+    setUserMenuOpen(false);
+    setCreateUserModalOpen(false);
+    setEditUserModalOpen(false);
+    setEditingUserId(null);
+    setEditUsername("");
+    setEditPassword("");
+    setEditRole("user");
     localStorage.removeItem(TOKEN_KEY);
     setMessages([]);
     setChatSessionId(null);
@@ -582,19 +602,23 @@ export default function App() {
     }
   };
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (targetPage = usersPage, targetPageSize = usersPageSize) => {
     if (!isAdmin) return;
     setUsersLoading(true);
     setUsersError("");
 
     try {
-      const list = await apiRequest<AuthUser[]>("/users", { method: "GET" });
-      setUsers(list);
-      setEditStates(
-        Object.fromEntries(
-          list.map((u) => [u.id, { username: u.username, role: u.role, password: "" }]),
-        ),
-      );
+      const query = new URLSearchParams({
+        page: String(targetPage),
+        page_size: String(targetPageSize),
+      });
+      const data = await apiRequest<UserListResponse>(`/users?${query.toString()}`, { method: "GET" });
+      setUsers(data.items);
+      setUsersTotal(data.total);
+      const totalPages = Math.max(1, Math.ceil(data.total / targetPageSize));
+      if (targetPage > totalPages) {
+        setUsersPage(totalPages);
+      }
     } catch (error) {
       setUsersError(error instanceof Error ? error.message : "加载用户失败");
     } finally {
@@ -749,7 +773,7 @@ export default function App() {
       void loadLlmAndSkillConfig();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, isAdmin]);
+  }, [viewMode, isAdmin, usersPage, usersPageSize]);
 
   useEffect(() => {
     if (!shopModalOpen) return;
@@ -759,6 +783,24 @@ export default function App() {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillShopSearch]);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!userMenuRef.current?.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setUserMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEsc);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [userMenuOpen]);
 
   const submitAuth = async () => {
     const username = authUsername.trim();
@@ -922,27 +964,44 @@ export default function App() {
       setNewUsername("");
       setNewPassword("");
       setNewRole("user");
-      await fetchUsers();
+      setCreateUserModalOpen(false);
+      setUsersPage(1);
+      await fetchUsers(1, usersPageSize);
     } catch (error) {
       setUsersError(error instanceof Error ? error.message : "创建用户失败");
     }
   };
 
-  const saveUser = async (userId: number) => {
-    const state = editStates[userId];
-    if (!state) return;
+  const openEditUserModal = (user: AuthUser) => {
+    setEditingUserId(user.id);
+    setEditUsername(user.username);
+    setEditRole(user.role);
+    setEditPassword("");
+    setEditUserModalOpen(true);
+    setUsersError("");
+  };
+
+  const saveUser = async () => {
+    if (!editingUserId) return;
+    const username = editUsername.trim();
+    if (!username) return;
 
     setUsersError("");
     try {
-      await apiRequest<AuthUser>(`/users/${userId}`, {
+      await apiRequest<AuthUser>(`/users/${editingUserId}`, {
         method: "PATCH",
         body: JSON.stringify({
-          username: state.username,
-          role: state.role,
-          password: state.password || undefined,
+          username,
+          role: editRole,
+          password: editPassword || undefined,
         }),
       });
-      await fetchUsers();
+      setEditUserModalOpen(false);
+      setEditingUserId(null);
+      setEditUsername("");
+      setEditPassword("");
+      setEditRole("user");
+      await fetchUsers(usersPage, usersPageSize);
     } catch (error) {
       setUsersError(error instanceof Error ? error.message : "更新失败");
     }
@@ -952,7 +1011,7 @@ export default function App() {
     setUsersError("");
     try {
       await apiRequest<{ status: string }>(`/users/${userId}`, { method: "DELETE" });
-      await fetchUsers();
+      await fetchUsers(usersPage, usersPageSize);
     } catch (error) {
       setUsersError(error instanceof Error ? error.message : "删除失败");
     }
@@ -1092,8 +1151,8 @@ export default function App() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 text-[16px] font-medium text-slate-900">
-      <div className="mx-auto flex h-[calc(100vh-3rem)] w-full max-w-7xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft">
+    <main className="min-h-screen bg-slate-50 px-3 py-4 text-[16px] font-medium text-slate-900 lg:px-5 lg:py-6">
+      <div className="mx-auto flex h-[calc(100vh-2rem)] w-full max-w-[1600px] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft lg:h-[calc(100vh-3rem)]">
         <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
           <div className="flex items-center gap-3 p-6">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200">
@@ -1198,15 +1257,6 @@ export default function App() {
             )}
           </nav>
 
-          <div className="border-t border-slate-100 p-4">
-            <button
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
-              type="button"
-              onClick={() => void logout()}
-            >
-              <LogOut size={14} /> 退出登录
-            </button>
-          </div>
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -1230,10 +1280,32 @@ export default function App() {
                           ? "模型配置"
                           : "用户管理"}
             </h2>
-            <span className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
-              <Shield size={14} className="mr-1" />
-              {currentUser.username} ({currentUser.role})
-            </span>
+            <div className="relative" ref={userMenuRef}>
+              <button
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-100"
+                type="button"
+                onClick={() => setUserMenuOpen((prev) => !prev)}
+              >
+                <Shield size={14} />
+                {currentUser.username} ({currentUser.role})
+                <ChevronDown size={14} className={`transition-transform ${userMenuOpen ? "rotate-180" : ""}`} />
+              </button>
+              {userMenuOpen && (
+                <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+                  <button
+                    className="inline-flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100"
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      void logout();
+                    }}
+                  >
+                    <LogOut size={14} />
+                    退出登录
+                  </button>
+                </div>
+              )}
+            </div>
           </header>
 
           <div className="min-h-0 flex-1">
@@ -1542,42 +1614,19 @@ export default function App() {
           </section>
         ) : viewMode === "users" && isAdmin ? (
           <section className="flex-1 overflow-y-auto bg-slate-50/30 p-6">
-            <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="mb-3 font-title text-xl font-bold text-slate-800">新增用户</h2>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
-                <input
-                  className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                  placeholder="用户名"
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
-                />
-                <input
-                  type="password"
-                  className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                  placeholder="初始密码"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
-                <select
-                  className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value as UserRole)}
-                >
-                  <option value="user">user</option>
-                  <option value="admin">admin</option>
-                </select>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-3 flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  className="inline-flex h-10 items-center justify-center gap-1 rounded-xl bg-blue-600 px-3 text-white transition hover:bg-blue-700"
-                  onClick={() => void createUserByAdmin()}
+                  className="btn-top-primary"
+                  onClick={() => {
+                    setUsersError("");
+                    setCreateUserModalOpen(true);
+                  }}
                 >
-                  <UserPlus size={14} /> 创建
+                  <UserPlus size={14} /> 新增用户
                 </button>
               </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="mb-3 font-title text-xl font-bold text-slate-800">用户列表</h2>
               {usersError && <p className="mb-3 text-sm text-red-500">{usersError}</p>}
               {usersLoading ? (
                 <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-50 px-3 py-2 text-slate-600">
@@ -1585,70 +1634,174 @@ export default function App() {
                   <span>加载中...</span>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {users.map((u) => {
-                    const state = editStates[u.id] ?? { username: u.username, role: u.role, password: "" };
-                    const isSelf = currentUser.id === u.id;
-                    return (
-                      <div key={u.id} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-6">
-                        <input
-                          className="h-9 rounded-lg border border-slate-200 px-2 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                          value={state.username}
-                          onChange={(e) =>
-                            setEditStates((prev) => ({
-                              ...prev,
-                              [u.id]: { ...state, username: e.target.value },
-                            }))
-                          }
-                        />
-                        <select
-                          className="h-9 rounded-lg border border-slate-200 px-2 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                          value={state.role}
-                          onChange={(e) =>
-                            setEditStates((prev) => ({
-                              ...prev,
-                              [u.id]: { ...state, role: e.target.value as UserRole },
-                            }))
-                          }
-                          disabled={isSelf}
-                        >
-                          <option value="user">user</option>
-                          <option value="admin">admin</option>
-                        </select>
-                        <input
-                          type="password"
-                          className="h-9 rounded-lg border border-slate-200 px-2 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                          value={state.password}
-                          placeholder="留空则不改密码"
-                          onChange={(e) =>
-                            setEditStates((prev) => ({
-                              ...prev,
-                              [u.id]: { ...state, password: e.target.value },
-                            }))
-                          }
-                        />
-                        <div className="flex items-center text-sm text-slate-500">{new Date(u.created_at).toLocaleDateString()}</div>
-                        <button
-                          type="button"
-                          className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 px-2 text-slate-600 transition hover:bg-slate-50 hover:text-slate-800"
-                          onClick={() => void saveUser(u.id)}
-                        >
-                          保存
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-red-200 px-2 text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                          onClick={() => void removeUser(u.id)}
-                          disabled={isSelf}
-                        >
-                          <Trash2 size={14} /> 删除
-                        </button>
-                      </div>
-                    );
-                  })}
+                <div className="overflow-hidden rounded-xl border border-slate-200">
+                  <table className="w-full border-collapse text-left">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="table-th">用户名</th>
+                        <th className="table-th">角色</th>
+                        <th className="table-th">创建时间</th>
+                        <th className="table-th">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {users.map((u) => {
+                        const isSelf = currentUser.id === u.id;
+                        return (
+                          <tr key={u.id} className="hover:bg-slate-50/60">
+                            <td className="table-td text-sm text-slate-700">{u.username}</td>
+                            <td className="table-td text-sm text-slate-500">{u.role}</td>
+                            <td className="table-td text-sm text-slate-500">{new Date(u.created_at).toLocaleDateString()}</td>
+                            <td className="table-td">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  type="button"
+                                  className="inline-flex h-8 items-center justify-center rounded-md border border-slate-200 px-2 text-xs text-slate-600 transition hover:bg-slate-50 hover:text-slate-800"
+                                  onClick={() => openEditUserModal(u)}
+                                >
+                                  编辑
+                                </button>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-red-200 px-2 text-xs text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                  onClick={() => void removeUser(u.id)}
+                                  disabled={isSelf}
+                                >
+                                  <Trash2 size={12} /> 删除
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
+              <PaginationControls
+                page={usersPage}
+                pageSize={usersPageSize}
+                total={usersTotal}
+                onPageChange={(page) => setUsersPage(page)}
+                onPageSizeChange={(size) => {
+                  setUsersPageSize(size);
+                  setUsersPage(1);
+                }}
+              />
             </div>
+
+            {createUserModalOpen && (
+              <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/35 p-4">
+                <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="font-title text-lg font-bold text-slate-800">新增用户</h3>
+                    <button
+                      type="button"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                      onClick={() => setCreateUserModalOpen(false)}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    <input
+                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                      placeholder="用户名"
+                      value={newUsername}
+                      onChange={(e) => setNewUsername(e.target.value)}
+                    />
+                    <input
+                      type="password"
+                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                      placeholder="初始密码"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                    <select
+                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                      value={newRole}
+                      onChange={(e) => setNewRole(e.target.value as UserRole)}
+                    >
+                      <option value="user">user</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  </div>
+                  <div className="mt-5 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 px-3 text-sm text-slate-600 transition hover:bg-slate-50"
+                      onClick={() => setCreateUserModalOpen(false)}
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex h-9 items-center justify-center rounded-lg bg-blue-600 px-3 text-sm text-white transition hover:bg-blue-700"
+                      onClick={() => void createUserByAdmin()}
+                    >
+                      确认创建
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {editUserModalOpen && (
+              <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/35 p-4">
+                <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="font-title text-lg font-bold text-slate-800">编辑用户</h3>
+                    <button
+                      type="button"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                      onClick={() => setEditUserModalOpen(false)}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    <input
+                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                      placeholder="用户名"
+                      value={editUsername}
+                      onChange={(e) => setEditUsername(e.target.value)}
+                    />
+                    <select
+                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                      value={editRole}
+                      onChange={(e) => setEditRole(e.target.value as UserRole)}
+                      disabled={editingUserId === currentUser.id}
+                    >
+                      <option value="user">user</option>
+                      <option value="admin">admin</option>
+                    </select>
+                    <input
+                      type="password"
+                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                      placeholder="新密码（留空则不改）"
+                      value={editPassword}
+                      onChange={(e) => setEditPassword(e.target.value)}
+                    />
+                  </div>
+                  <div className="mt-5 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 px-3 text-sm text-slate-600 transition hover:bg-slate-50"
+                      onClick={() => setEditUserModalOpen(false)}
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex h-9 items-center justify-center rounded-lg bg-blue-600 px-3 text-sm text-white transition hover:bg-blue-700"
+                      onClick={() => void saveUser()}
+                    >
+                      保存修改
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
         ) : (
           <div className="flex h-full min-h-0 flex-col lg:flex-row">

@@ -29,13 +29,14 @@ import AlarmsPanel from "./components/AlarmsPanel";
 import DashboardPanel from "./components/DashboardPanel";
 import DigitalAssetsPanel from "./components/DigitalAssetsPanel";
 import type { DigitalAsset } from "./components/DigitalAssetsPanel";
+import ResourceManagementPanel from "./components/ResourceManagementPanel";
 import SceneConfigPanel from "./components/SceneConfigPanel";
 import Scene3DPanel from "./components/Scene3DPanel";
 import SystemStatusPanel from "./components/SystemStatusPanel";
 import PaginationControls from "./components/PaginationControls";
 
 type ChatRole = "user" | "assistant";
-type ViewMode = "dashboard" | "chat" | "assets" | "scenes" | "scene3d" | "alarms" | "status" | "users" | "llm";
+type ViewMode = "dashboard" | "chat" | "assets" | "resources" | "scenes" | "scene3d" | "alarms" | "status" | "users" | "llm";
 type AuthMode = "login" | "register";
 type UserRole = "admin" | "user";
 
@@ -1200,6 +1201,17 @@ export default function App() {
             </button>
             <button
               className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
+                viewMode === "resources"
+                  ? "bg-blue-50 font-semibold text-blue-600"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+              type="button"
+              onClick={() => setViewMode("resources")}
+            >
+              <Package size={18} /> 资源管理
+            </button>
+            <button
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
                 viewMode === "scenes"
                   ? "bg-blue-50 font-semibold text-blue-600"
                   : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
@@ -1266,8 +1278,10 @@ export default function App() {
                 ? "系统概览"
                 : viewMode === "chat"
                   ? "RCA 助手"
-                  : viewMode === "assets"
-                    ? "数字资产"
+                : viewMode === "assets"
+                  ? "数字资产"
+                  : viewMode === "resources"
+                    ? "资源管理"
                     : viewMode === "scenes"
                       ? "场景配置"
                     : viewMode === "scene3d"
@@ -1315,8 +1329,23 @@ export default function App() {
               <DigitalAssetsPanel
                 apiBaseUrl={API_BASE_URL}
                 token={token}
-                onOpenModelScene={(asset) => {
-                  setSelectedAsset(asset);
+              />
+            ) : viewMode === "resources" ? (
+              <ResourceManagementPanel
+                apiBaseUrl={API_BASE_URL}
+                token={token}
+                onPreviewModel={(resource) => {
+                  setSelectedAsset({
+                    id: `RES-${resource.objectKey.slice(-8)}`,
+                    name: resource.name,
+                    type: "模型资源",
+                    status: "Normal",
+                    location: "资源管理",
+                    health: 100,
+                    modelFile: resource.url,
+                    minioObjectKey: resource.objectKey,
+                    metadata: {},
+                  });
                   setViewMode("scene3d");
                 }}
               />

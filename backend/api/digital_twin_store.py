@@ -138,7 +138,20 @@ def init_digital_twin_db() -> None:
                 location TEXT NOT NULL,
                 health SMALLINT NOT NULL CHECK(health >= 0 AND health <= 100),
                 model_file TEXT NOT NULL,
+                minio_object_key TEXT,
                 metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+        conn.execute("ALTER TABLE digital_assets ADD COLUMN IF NOT EXISTS minio_object_key TEXT")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scene_configs (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
                 created_at TIMESTAMPTZ NOT NULL,
                 updated_at TIMESTAMPTZ NOT NULL
             )
@@ -146,10 +159,14 @@ def init_digital_twin_db() -> None:
         )
         conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS scene_configs (
+            CREATE TABLE IF NOT EXISTS model_resources (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
-                description TEXT NOT NULL DEFAULT '',
+                original_file_name TEXT NOT NULL,
+                object_key TEXT NOT NULL UNIQUE,
+                url TEXT NOT NULL,
+                file_size BIGINT NOT NULL CHECK(file_size >= 0),
+                content_type TEXT NOT NULL,
                 created_at TIMESTAMPTZ NOT NULL,
                 updated_at TIMESTAMPTZ NOT NULL
             )
@@ -355,7 +372,7 @@ def list_assets(
         total = int(total_row["cnt"] if total_row else 0)
         rows = conn.execute(
             f"""
-            SELECT id, name, type, status, location, health, model_file, metadata, created_at, updated_at
+            SELECT id, name, type, status, location, health, model_file, minio_object_key, metadata, created_at, updated_at
             FROM digital_assets
             {where_sql}
             ORDER BY created_at DESC
@@ -366,6 +383,96 @@ def list_assets(
         return ([dict(row) for row in rows], total)
 
 
+def list_resources(
+    keyword: str | None = None,
+    page: int = 1,
+    page_size: int = 10,
+) -> tuple[list[dict[str, Any]], int]:
+    safe_page = max(page, 1)
+    safe_page_size = max(page_size, 1)
+    offset = (safe_page - 1) * safe_page_size
+    where_sql = ""
+    params: list[Any] = []
+    if keyword:
+        where_sql = "WHERE name ILIKE %s OR original_file_name ILIKE %s OR object_key ILIKE %s"
+        kw = f"%{keyword.strip()}%"
+        params.extend([kw, kw, kw])
+
+    with _connect() as conn:
+        total_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM model_resources
+            {where_sql}
+            """,
+            params,
+        ).fetchone()
+        total = int(total_row["cnt"] if total_row else 0)
+        rows = conn.execute(
+            f"""
+            SELECT id, name, original_file_name, object_key, url, file_size, content_type, created_at, updated_at
+            FROM model_resources
+            {where_sql}
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+            """,
+            [*params, safe_page_size, offset],
+        ).fetchall()
+        return ([dict(row) for row in rows], total)
+
+
+def create_resource(
+    name: str,
+    original_file_name: str,
+    object_key: str,
+    url: str,
+    file_size: int,
+    content_type: str,
+) -> dict[str, Any]:
+    now = _utc_now()
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            INSERT INTO model_resources(id, name, original_file_name, object_key, url, file_size, content_type, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, name, original_file_name, object_key, url, file_size, content_type, created_at, updated_at
+            """,
+            (
+                uuid.uuid4().hex,
+                name,
+                original_file_name,
+                object_key,
+                url,
+                file_size,
+                content_type,
+                now,
+                now,
+            ),
+        ).fetchone()
+    if row is None:
+        raise RuntimeError("创建资源失败")
+    return dict(row)
+
+
+def get_resource(resource_id: str) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, name, original_file_name, object_key, url, file_size, content_type, created_at, updated_at
+            FROM model_resources
+            WHERE id = %s
+            """,
+            (resource_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def delete_resource(resource_id: str) -> bool:
+    with _connect() as conn:
+        cursor = conn.execute("DELETE FROM model_resources WHERE id = %s", (resource_id,))
+        return cursor.rowcount > 0
+
+
 def create_asset(
     asset_id: str,
     name: str,
@@ -374,18 +481,31 @@ def create_asset(
     location: str,
     health: int,
     model_file: str,
-    metadata: dict[str, Any] | None,
+    metadata: dict[str, Any] | None = None,
+    minio_object_key: str | None = None,
 ) -> dict[str, Any]:
     now = _utc_now()
     payload_metadata = metadata or {}
     with _connect() as conn:
         row = conn.execute(
             """
-            INSERT INTO digital_assets(id, name, type, status, location, health, model_file, metadata, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
-            RETURNING id, name, type, status, location, health, model_file, metadata, created_at, updated_at
+            INSERT INTO digital_assets(id, name, type, status, location, health, model_file, minio_object_key, metadata, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+            RETURNING id, name, type, status, location, health, model_file, minio_object_key, metadata, created_at, updated_at
             """,
-            (asset_id, name, type_, status, location, health, model_file, json.dumps(payload_metadata, ensure_ascii=False), now, now),
+            (
+                asset_id,
+                name,
+                type_,
+                status,
+                location,
+                health,
+                model_file,
+                minio_object_key,
+                json.dumps(payload_metadata, ensure_ascii=False),
+                now,
+                now,
+            ),
         ).fetchone()
         if row is None:
             raise RuntimeError("创建资产失败")
@@ -400,6 +520,7 @@ def update_asset(
     location: str | None = None,
     health: int | None = None,
     model_file: str | None = None,
+    minio_object_key: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     with _connect() as conn:
@@ -418,10 +539,11 @@ def update_asset(
                 location = %s,
                 health = %s,
                 model_file = %s,
+                minio_object_key = %s,
                 metadata = %s::jsonb,
                 updated_at = %s
             WHERE id = %s
-            RETURNING id, name, type, status, location, health, model_file, metadata, created_at, updated_at
+            RETURNING id, name, type, status, location, health, model_file, minio_object_key, metadata, created_at, updated_at
             """,
             (
                 name if name is not None else current["name"],
@@ -430,6 +552,7 @@ def update_asset(
                 location if location is not None else current["location"],
                 health if health is not None else current["health"],
                 model_file if model_file is not None else current["model_file"],
+                minio_object_key if minio_object_key is not None else current["minio_object_key"],
                 json.dumps(next_metadata, ensure_ascii=False),
                 now,
                 asset_id,
@@ -567,7 +690,7 @@ def list_scene_assets(scene_id: str) -> list[dict[str, Any]]:
     with _connect() as conn:
         rows = conn.execute(
             """
-            SELECT da.id, da.name, da.type, da.status, da.location, da.health, da.model_file, da.metadata, da.created_at, da.updated_at
+            SELECT da.id, da.name, da.type, da.status, da.location, da.health, da.model_file, da.minio_object_key, da.metadata, da.created_at, da.updated_at
             FROM scene_instances si
             JOIN digital_assets da ON da.id = si.asset_id
             WHERE si.scene_id = %s
@@ -748,7 +871,8 @@ def get_scene(scene_id: str) -> dict[str, Any] | None:
                 da.status,
                 da.location,
                 da.health,
-                da.model_file
+                da.model_file,
+                da.minio_object_key
             FROM scene_instances si
             JOIN digital_assets da ON da.id = si.asset_id
             WHERE si.scene_id = %s

@@ -1,5 +1,11 @@
-import { useMemo, useState } from "react";
+import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Box, RotateCcw } from "lucide-react";
+import { Canvas, useLoader } from "@react-three/fiber";
+import { Html, OrbitControls, useProgress } from "@react-three/drei";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
+import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import { Box3, Vector3, type Group, type Object3D } from "three";
 import type { DigitalAsset } from "./DigitalAssetsPanel";
 
 type Scene3DPanelProps = {
@@ -9,24 +15,116 @@ type Scene3DPanelProps = {
   onBackToAssets: () => void;
 };
 
-const FIXED_MODEL = {
-  name: "factory-demo.glb",
-  version: "v0.1",
-  source: "/static/models/factory-demo.glb",
-  note: "当前为固定演示模型，暂不支持上传或替换。",
+type ModelTransformProps = {
+  url: string;
+  zoom: number;
+  tiltX: number;
+  rotateY: number;
 };
+
+type FitResult = {
+  object: Object3D;
+  fitScale: number;
+  center: Vector3;
+};
+
+type ModelErrorBoundaryProps = {
+  onError: (message: string) => void;
+  children: ReactNode;
+};
+
+class ModelErrorBoundary extends Component<ModelErrorBoundaryProps> {
+  componentDidCatch(error: Error) {
+    this.props.onError(error.message || "模型加载失败");
+  }
+
+  render() {
+    return this.props.children;
+  }
+}
+
+function LoadingOverlay() {
+  const { progress } = useProgress();
+  return (
+    <Html center>
+      <div className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow">
+        模型加载中 {Math.round(progress)}%
+      </div>
+    </Html>
+  );
+}
+
+function fitObject(object: Object3D): FitResult {
+  const clone = object.clone(true);
+  const box = new Box3().setFromObject(clone);
+  const size = box.getSize(new Vector3());
+  const center = box.getCenter(new Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fitScale = maxDim > 0 ? 2 / maxDim : 1;
+  return { object: clone, fitScale, center };
+}
+
+function GltfModel({ url, zoom, tiltX, rotateY }: ModelTransformProps) {
+  const gltf = useLoader(GLTFLoader, url);
+  const { object, fitScale, center } = useMemo(() => fitObject(gltf.scene), [gltf.scene]);
+  return (
+    <group
+      scale={zoom * fitScale}
+      rotation={[((tiltX * Math.PI) / 180) as number, ((rotateY * Math.PI) / 180) as number, 0]}
+      position={[-center.x * fitScale, -center.y * fitScale, -center.z * fitScale]}
+    >
+      <primitive object={object as Group} />
+    </group>
+  );
+}
+
+function ObjModel({ url, zoom, tiltX, rotateY }: ModelTransformProps) {
+  const object = useLoader(OBJLoader, url);
+  const fit = useMemo(() => fitObject(object), [object]);
+  return (
+    <group
+      scale={zoom * fit.fitScale}
+      rotation={[((tiltX * Math.PI) / 180) as number, ((rotateY * Math.PI) / 180) as number, 0]}
+      position={[-fit.center.x * fit.fitScale, -fit.center.y * fit.fitScale, -fit.center.z * fit.fitScale]}
+    >
+      <primitive object={fit.object as Object3D} />
+    </group>
+  );
+}
+
+function FbxModel({ url, zoom, tiltX, rotateY }: ModelTransformProps) {
+  const object = useLoader(FBXLoader, url);
+  const fit = useMemo(() => fitObject(object), [object]);
+  return (
+    <group
+      scale={zoom * fit.fitScale}
+      rotation={[((tiltX * Math.PI) / 180) as number, ((rotateY * Math.PI) / 180) as number, 0]}
+      position={[-fit.center.x * fit.fitScale, -fit.center.y * fit.fitScale, -fit.center.z * fit.fitScale]}
+    >
+      <primitive object={fit.object as Object3D} />
+    </group>
+  );
+}
+
+function ModelSwitch({ url, zoom, tiltX, rotateY }: ModelTransformProps) {
+  const ext = useMemo(() => url.split("?")[0].split(".").pop()?.toLowerCase() ?? "", [url]);
+  if (ext === "glb" || ext === "gltf") {
+    return <GltfModel url={url} zoom={zoom} tiltX={tiltX} rotateY={rotateY} />;
+  }
+  if (ext === "obj") {
+    return <ObjModel url={url} zoom={zoom} tiltX={tiltX} rotateY={rotateY} />;
+  }
+  if (ext === "fbx") {
+    return <FbxModel url={url} zoom={zoom} tiltX={tiltX} rotateY={rotateY} />;
+  }
+  throw new Error("暂不支持当前模型格式，请上传 glb/gltf/obj/fbx 文件");
+}
 
 export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, asset, onBackToAssets }: Scene3DPanelProps) {
   const [zoom, setZoom] = useState(1);
-  const [rotateY, setRotateY] = useState(22);
-  const [tiltX, setTiltX] = useState(18);
-
-  const modelStyle = useMemo(
-    () => ({
-      transform: `scale(${zoom}) rotateX(${tiltX}deg) rotateY(${rotateY}deg)`,
-    }),
-    [zoom, rotateY, tiltX],
-  );
+  const [rotateY, setRotateY] = useState(0);
+  const [tiltX, setTiltX] = useState(0);
+  const [loadError, setLoadError] = useState("");
 
   if (!asset) {
     return (
@@ -46,6 +144,13 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
     );
   }
 
+  const modelUrl = asset.modelFile?.trim();
+  const modelName = modelUrl ? modelUrl.split("?")[0].split("/").pop() ?? modelUrl : "未配置模型";
+
+  useEffect(() => {
+    setLoadError("");
+  }, [modelUrl]);
+
   return (
     <section className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
       <div className="mb-5 flex items-start justify-between gap-3">
@@ -54,7 +159,7 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
             当前资产：<span className="font-semibold text-slate-800">{asset.name}</span>
           </p>
           <p>
-            模型文件：<span className="font-mono text-slate-700">{FIXED_MODEL.name}</span>
+            模型文件：<span className="font-mono text-slate-700">{modelName}</span>
           </p>
         </div>
         <button
@@ -68,40 +173,65 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
         <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 shadow-sm">
-          <div className="relative h-[440px] overflow-hidden rounded-xl border border-slate-700 bg-[radial-gradient(circle_at_50%_30%,rgba(59,130,246,0.38),rgba(15,23,42,0.9))]">
-            <div className="absolute inset-0 flex items-center justify-center [perspective:1200px]">
-              <div className="relative h-52 w-52 transition-transform duration-200" style={modelStyle}>
-                <div className="absolute inset-0 rounded-2xl border border-blue-200/30 bg-blue-300/20 shadow-[0_0_80px_rgba(59,130,246,0.35)] backdrop-blur-sm" />
-                <div className="absolute inset-3 rounded-xl border border-white/25 bg-gradient-to-br from-sky-200/40 to-indigo-400/25" />
-                <div className="absolute -bottom-8 left-1/2 h-6 w-40 -translate-x-1/2 rounded-full bg-slate-950/70 blur-md" />
-              </div>
-            </div>
+          <div className="relative h-[440px] overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
+            {!modelUrl ? (
+              <div className="flex h-full items-center justify-center text-sm text-slate-300">当前资产未配置模型地址</div>
+            ) : (
+              <Canvas camera={{ position: [0, 1.8, 5.6], fov: 45 }}>
+                <color attach="background" args={["#020617"]} />
+                <ambientLight intensity={0.6} />
+                <hemisphereLight intensity={0.5} groundColor="#334155" />
+                <directionalLight position={[5, 8, 4]} intensity={1} />
+                <ModelErrorBoundary
+                  onError={(message) => {
+                    setLoadError(message);
+                  }}
+                >
+                  <Suspense fallback={<LoadingOverlay />}>
+                    <ModelSwitch
+                      url={modelUrl}
+                      zoom={zoom}
+                      tiltX={tiltX}
+                      rotateY={rotateY}
+                    />
+                  </Suspense>
+                </ModelErrorBoundary>
+                <gridHelper args={[12, 12, "#334155", "#1e293b"]} position={[0, -1.3, 0]} />
+                <OrbitControls
+                  enablePan
+                  enableZoom
+                  onChange={() => {
+                    if (loadError) setLoadError("");
+                  }}
+                />
+              </Canvas>
+            )}
           </div>
-          <p className="mt-3 text-xs text-slate-300">操作：拖动滑条调整缩放和观察角度（当前为固定模型演示）。</p>
+          {loadError ? (
+            <p className="mt-3 text-xs text-red-300">{loadError}</p>
+          ) : (
+            <p className="mt-3 text-xs text-slate-300">支持鼠标拖拽旋转、滚轮缩放，也可通过右侧滑条微调姿态。</p>
+          )}
         </div>
 
         <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-slate-800">
-            <Box size={18} className="text-blue-600" /> 演示模型信息
+            <Box size={18} className="text-blue-600" /> 模型信息
           </h3>
 
           <div className="space-y-4 text-sm">
             <dl className="space-y-2">
               <div>
                 <dt className="text-slate-400">模型名称</dt>
-                <dd className="font-semibold text-slate-800">{FIXED_MODEL.name}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">版本</dt>
-                <dd className="text-slate-700">{FIXED_MODEL.version}</dd>
+                <dd className="font-semibold text-slate-800">{modelName}</dd>
               </div>
               <div>
                 <dt className="text-slate-400">模型来源</dt>
-                <dd className="font-mono text-slate-700">{FIXED_MODEL.source}</dd>
+                <dd className="break-all font-mono text-xs text-slate-700">{modelUrl || "--"}</dd>
               </div>
               <div>
-                <dt className="text-slate-400">说明</dt>
-                <dd className="text-slate-700">{FIXED_MODEL.note}</dd>
+                <dt className="text-slate-400">对象键</dt>
+                <dd className="break-all font-mono text-xs text-slate-700">{asset.minioObjectKey || "--"}</dd>
               </div>
             </dl>
 
@@ -110,8 +240,8 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
                 <span className="text-xs text-slate-500">缩放</span>
                 <input
                   type="range"
-                  min={0.6}
-                  max={1.8}
+                  min={0.5}
+                  max={3}
                   step={0.1}
                   value={zoom}
                   onChange={(e) => setZoom(Number(e.target.value))}
@@ -123,8 +253,8 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
                 <span className="text-xs text-slate-500">左右旋转</span>
                 <input
                   type="range"
-                  min={-55}
-                  max={55}
+                  min={-180}
+                  max={180}
                   step={1}
                   value={rotateY}
                   onChange={(e) => setRotateY(Number(e.target.value))}
@@ -136,8 +266,8 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
                 <span className="text-xs text-slate-500">俯仰角</span>
                 <input
                   type="range"
-                  min={-20}
-                  max={35}
+                  min={-75}
+                  max={75}
                   step={1}
                   value={tiltX}
                   onChange={(e) => setTiltX(Number(e.target.value))}
@@ -145,6 +275,19 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
                 />
               </label>
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setZoom(1);
+                setRotateY(0);
+                setTiltX(0);
+                setLoadError("");
+              }}
+              className="btn-top-outline w-full"
+            >
+              重置视角
+            </button>
           </div>
         </aside>
       </div>

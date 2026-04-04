@@ -169,6 +169,7 @@ class DigitalAssetBase(BaseModel):
     location: str = Field(..., min_length=1, max_length=128)
     health: int = Field(..., ge=0, le=100)
     model_file: str = Field(..., min_length=1, max_length=256)
+    minio_object_key: str | None = Field(default=None, max_length=512)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -183,6 +184,7 @@ class DigitalAssetUpdateRequest(BaseModel):
     location: str | None = Field(default=None, min_length=1, max_length=128)
     health: int | None = Field(default=None, ge=0, le=100)
     model_file: str | None = Field(default=None, min_length=1, max_length=256)
+    minio_object_key: str | None = Field(default=None, max_length=512)
     metadata: dict[str, Any] | None = None
 
 
@@ -234,6 +236,7 @@ class SceneInstanceResponse(BaseModel):
     location: str
     health: int
     model_file: str
+    minio_object_key: str | None = None
 
 
 class SceneRelationResponse(BaseModel):
@@ -294,3 +297,37 @@ class SceneRelationItem(BaseModel):
 
 class SceneRelationsReplaceRequest(BaseModel):
     relations: list[SceneRelationItem] = Field(default_factory=list)
+
+
+class AssetUploadResponse(BaseModel):
+    object_key: str
+    url: str
+    file_size: int = Field(..., ge=0)
+    content_type: str
+    original_file_name: str
+
+
+class ResourceItemResponse(BaseModel):
+    id: str
+    name: str
+    original_file_name: str
+    object_key: str
+    url: str
+    file_size: int = Field(..., ge=0)
+    content_type: str
+    created_at: datetime | str
+    updated_at: datetime | str
+
+
+class ResourceListResponse(BaseModel):
+    items: list[ResourceItemResponse]
+    page: int = 1
+    page_size: int = 10
+    total: int = 0
+
+
+class ResourcePreviewUrlResponse(BaseModel):
+    resource_id: str
+    object_key: str
+    preview_url: str
+    expires_in_seconds: int = Field(..., ge=60)

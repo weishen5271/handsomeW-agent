@@ -1,15 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import os
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from psycopg import IntegrityError
 
 from api.auth import get_current_user
 from api.digital_twin_store import (
+    create_resource,
     create_asset,
     create_scene,
+    delete_resource,
     delete_asset,
     delete_scene,
     get_scene,
+    get_resource,
     list_asset_relations,
     list_assets,
+    list_resources,
     list_scene_assets,
     list_scenes,
     replace_scene_assets,
@@ -18,8 +27,12 @@ from api.digital_twin_store import (
     update_scene,
     upsert_scene_instance,
 )
+from api.minio_client import MinioStorage
 from api.schemas import (
     AssetRelationResponse,
+    ResourceItemResponse,
+    ResourceListResponse,
+    ResourcePreviewUrlResponse,
     DigitalAssetListResponse,
     DigitalAssetCreateRequest,
     DigitalAssetResponse,
@@ -36,6 +49,10 @@ from api.schemas import (
 )
 
 router = APIRouter(prefix="/digital-twin", tags=["digital-twin"])
+
+ALLOWED_MODEL_EXTENSIONS = {".glb", ".gltf", ".obj", ".fbx"}
+MAX_UPLOAD_SIZE = 100 * 1024 * 1024
+PREVIEW_URL_EXPIRE_SECONDS = max(int(os.getenv("MINIO_PRESIGNED_EXPIRE_SECONDS") or "3600"), 60)
 
 
 @router.get("/assets", response_model=DigitalAssetListResponse)
@@ -69,6 +86,7 @@ async def create_asset_api(
             location=payload.location.strip(),
             health=payload.health,
             model_file=payload.model_file.strip(),
+            minio_object_key=payload.minio_object_key.strip() if payload.minio_object_key else None,
             metadata=payload.metadata,
         )
     except IntegrityError as exc:
@@ -90,6 +108,7 @@ async def update_asset_api(
         location=payload.location.strip() if payload.location is not None else None,
         health=payload.health,
         model_file=payload.model_file.strip() if payload.model_file is not None else None,
+        minio_object_key=payload.minio_object_key.strip() if payload.minio_object_key else None,
         metadata=payload.metadata,
     )
     if row is None:
@@ -103,6 +122,101 @@ async def delete_asset_api(asset_id: str, _: dict = Depends(get_current_user)) -
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资产不存在")
     return {"status": "deleted"}
+
+
+@router.get("/resources", response_model=ResourceListResponse)
+async def get_resources(
+    keyword: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=200),
+    _: dict = Depends(get_current_user),
+) -> ResourceListResponse:
+    rows, total = list_resources(keyword=keyword, page=page, page_size=page_size)
+    return ResourceListResponse(
+        items=[ResourceItemResponse(**row) for row in rows],
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
+
+
+@router.delete("/resources/{resource_id}")
+async def delete_resource_api(resource_id: str, _: dict = Depends(get_current_user)) -> dict[str, str]:
+    deleted = delete_resource(resource_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源不存在")
+    return {"status": "deleted"}
+
+
+@router.get("/resources/{resource_id}/preview-url", response_model=ResourcePreviewUrlResponse)
+async def get_resource_preview_url(resource_id: str, _: dict = Depends(get_current_user)) -> ResourcePreviewUrlResponse:
+    row = get_resource(resource_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源不存在")
+    try:
+        storage = MinioStorage()
+        preview_url = storage.get_preview_url(row["object_key"])
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return ResourcePreviewUrlResponse(
+        resource_id=row["id"],
+        object_key=row["object_key"],
+        preview_url=preview_url,
+        expires_in_seconds=PREVIEW_URL_EXPIRE_SECONDS,
+    )
+
+
+@router.post("/resources/upload", response_model=ResourceItemResponse)
+async def upload_resource_model_api(
+    file: UploadFile = File(...),
+    name: str | None = Form(default=None),
+    _: dict = Depends(get_current_user),
+) -> ResourceItemResponse:
+    original_file_name = (file.filename or "").strip()
+    if not original_file_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少文件名")
+
+    suffix = Path(original_file_name).suffix.lower()
+    if suffix not in ALLOWED_MODEL_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"仅支持以下格式: {', '.join(sorted(ALLOWED_MODEL_EXTENSIONS))}",
+        )
+
+    payload = await file.read()
+    file_size = len(payload)
+    if file_size <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="上传文件为空")
+    if file_size > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="文件大小不能超过 100MB")
+
+    try:
+        storage = MinioStorage()
+        object_key = storage.build_object_key(
+            year=datetime.now(timezone.utc).year,
+            asset_id="resources",
+            filename=f"{uuid.uuid4().hex}-{Path(original_file_name).name}",
+        )
+        uploaded = storage.upload_model(
+            object_key=object_key,
+            file_bytes=payload,
+            content_type=file.content_type or "application/octet-stream",
+            original_file_name=original_file_name,
+        )
+        row = create_resource(
+            name=(name or Path(original_file_name).stem).strip() or Path(original_file_name).stem,
+            original_file_name=uploaded.original_file_name,
+            object_key=uploaded.object_key,
+            url=uploaded.url,
+            file_size=uploaded.file_size,
+            content_type=uploaded.content_type,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="资源已存在，请重试上传") from exc
+
+    return ResourceItemResponse(**row)
 
 
 @router.get("/assets/{asset_id}/relations", response_model=list[AssetRelationResponse])

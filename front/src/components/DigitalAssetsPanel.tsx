@@ -12,6 +12,7 @@ export type DigitalAsset = {
   location: string;
   health: number;
   modelFile: string;
+  minioObjectKey?: string | null;
   metadata: Record<string, unknown>;
 };
 
@@ -23,6 +24,7 @@ type ApiAsset = {
   location: string;
   health: number;
   model_file: string;
+  minio_object_key?: string | null;
   metadata: Record<string, unknown>;
 };
 
@@ -36,7 +38,6 @@ type AssetListResponse = {
 type DigitalAssetsPanelProps = {
   apiBaseUrl: string;
   token: string;
-  onOpenModelScene: (asset: DigitalAsset) => void;
 };
 
 type AssetForm = {
@@ -68,11 +69,12 @@ function toUiAsset(asset: ApiAsset): DigitalAsset {
     location: asset.location,
     health: asset.health,
     modelFile: asset.model_file,
+    minioObjectKey: asset.minio_object_key,
     metadata: asset.metadata ?? {},
   };
 }
 
-export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene }: DigitalAssetsPanelProps) {
+export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsPanelProps) {
   const [assets, setAssets] = useState<DigitalAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -307,13 +309,6 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token, onOpenModelScene
                   编辑
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => onOpenModelScene(detailAsset)}
-                className="btn-top-outline border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-              >
-                模型漫游
-              </button>
               <button
                 type="button"
                 onClick={() => void removeAsset(detailAsset.id)}

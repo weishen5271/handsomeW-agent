@@ -89,11 +89,14 @@ class MilvusIndexConstructionModule:
             FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=self.dimension),
             FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=15000),
             FieldSchema(name="node_id", dtype=DataType.VARCHAR, max_length=100),
-            FieldSchema(name="recipe_name", dtype=DataType.VARCHAR, max_length=300),
+            FieldSchema(name="entity_name", dtype=DataType.VARCHAR, max_length=300),
+            FieldSchema(name="equipment_name", dtype=DataType.VARCHAR, max_length=300),
             FieldSchema(name="node_type", dtype=DataType.VARCHAR, max_length=100),
-            FieldSchema(name="category", dtype=DataType.VARCHAR, max_length=100),
-            FieldSchema(name="cuisine_type", dtype=DataType.VARCHAR, max_length=200),
-            FieldSchema(name="difficulty", dtype=DataType.INT64),
+            FieldSchema(name="equipment_type", dtype=DataType.VARCHAR, max_length=200),
+            FieldSchema(name="production_line", dtype=DataType.VARCHAR, max_length=200),
+            FieldSchema(name="status", dtype=DataType.VARCHAR, max_length=100),
+            FieldSchema(name="health", dtype=DataType.INT64),
+            FieldSchema(name="location", dtype=DataType.VARCHAR, max_length=200),
             FieldSchema(name="doc_type", dtype=DataType.VARCHAR, max_length=50),
             FieldSchema(name="chunk_id", dtype=DataType.VARCHAR, max_length=150),
             FieldSchema(name="parent_id", dtype=DataType.VARCHAR, max_length=100)
@@ -103,7 +106,7 @@ class MilvusIndexConstructionModule:
         # 创建集合模式
         schema = CollectionSchema(
             fields=fields,
-            description="中式烹饪知识图谱向量集合"
+            description="数字孪生工业设备知识图谱向量集合"
         )
         return schema
 
@@ -127,6 +130,7 @@ class MilvusIndexConstructionModule:
                 else:
                     logger.info(f"集合: {self.collection_name} 已存在")
                     self.collection_created = True
+                    return True
 
             # 创建集合
             schema = self._create_collection_schema()
@@ -216,11 +220,17 @@ class MilvusIndexConstructionModule:
                     "vector": vector,
                     "text": self._safe_truncate(chunk.page_content, 15000),
                     "node_id": self._safe_truncate(chunk.metadata.get("node_id", ""), 100),
-                    "recipe_name": self._safe_truncate(chunk.metadata.get("recipe_name", ""), 300),
+                    "entity_name": self._safe_truncate(
+                        chunk.metadata.get("entity_name", chunk.metadata.get("equipment_name", "")),
+                        300,
+                    ),
+                    "equipment_name": self._safe_truncate(chunk.metadata.get("equipment_name", ""), 300),
                     "node_type": self._safe_truncate(chunk.metadata.get("node_type", ""), 100),
-                    "category": self._safe_truncate(chunk.metadata.get("category", ""), 100),
-                    "cuisine_type": self._safe_truncate(chunk.metadata.get("cuisine_type", ""), 200),
-                    "difficulty": int(chunk.metadata.get("difficulty", 0)),
+                    "equipment_type": self._safe_truncate(chunk.metadata.get("equipment_type", ""), 200),
+                    "production_line": self._safe_truncate(chunk.metadata.get("production_line", ""), 200),
+                    "status": self._safe_truncate(chunk.metadata.get("status", ""), 100),
+                    "health": int(chunk.metadata.get("health", -1)),
+                    "location": self._safe_truncate(chunk.metadata.get("location", ""), 200),
                     "doc_type": self._safe_truncate(chunk.metadata.get("doc_type", ""), 50),
                     "chunk_id": self._safe_truncate(chunk.metadata.get("chunk_id", f"chunk_{i}"), 150),
                     "parent_id": self._safe_truncate(chunk.metadata.get("parent_id", ""), 100)
@@ -292,11 +302,17 @@ class MilvusIndexConstructionModule:
                     "vector": vector,
                     "text": self._safe_truncate(chunk.page_content, 15000),
                     "node_id": self._safe_truncate(chunk.metadata.get("node_id", ""), 100),
-                    "recipe_name": self._safe_truncate(chunk.metadata.get("recipe_name", ""), 300),
+                    "entity_name": self._safe_truncate(
+                        chunk.metadata.get("entity_name", chunk.metadata.get("equipment_name", "")),
+                        300,
+                    ),
+                    "equipment_name": self._safe_truncate(chunk.metadata.get("equipment_name", ""), 300),
                     "node_type": self._safe_truncate(chunk.metadata.get("node_type", ""), 100),
-                    "category": self._safe_truncate(chunk.metadata.get("category", ""), 100),
-                    "cuisine_type": self._safe_truncate(chunk.metadata.get("cuisine_type", ""), 200),
-                    "difficulty": int(chunk.metadata.get("difficulty", 0)),
+                    "equipment_type": self._safe_truncate(chunk.metadata.get("equipment_type", ""), 200),
+                    "production_line": self._safe_truncate(chunk.metadata.get("production_line", ""), 200),
+                    "status": self._safe_truncate(chunk.metadata.get("status", ""), 100),
+                    "health": int(chunk.metadata.get("health", -1)),
+                    "location": self._safe_truncate(chunk.metadata.get("location", ""), 200),
                     "doc_type": self._safe_truncate(chunk.metadata.get("doc_type", ""), 50),
                     "chunk_id": self._safe_truncate(chunk.metadata.get("chunk_id", f"new_chunk_{i}_{int(time.time())}"), 150),
                     "parent_id": self._safe_truncate(chunk.metadata.get("parent_id", ""), 100)
@@ -370,8 +386,8 @@ class MilvusIndexConstructionModule:
                 "data": [query_vector],
                 "anns_field": "vector",
                 "limit": k,
-                "output_fields": ["text", "node_id", "recipe_name", "node_type",
-                                  "category", "cuisine_type", "difficulty", "doc_type",
+                "output_fields": ["text", "node_id", "entity_name", "equipment_name", "node_type",
+                                  "equipment_type", "production_line", "status", "health", "location", "doc_type",
                                   "chunk_id", "parent_id"],
                 "search_params": search_params
             }
@@ -392,11 +408,14 @@ class MilvusIndexConstructionModule:
                         "text": hit["entity"]["text"],
                         "metadata": {
                             "node_id": hit["entity"]["node_id"],
-                            "recipe_name": hit["entity"]["recipe_name"],
+                            "entity_name": hit["entity"].get("entity_name", ""),
+                            "equipment_name": hit["entity"].get("equipment_name", ""),
                             "node_type": hit["entity"]["node_type"],
-                            "category": hit["entity"]["category"],
-                            "cuisine_type": hit["entity"]["cuisine_type"],
-                            "difficulty": hit["entity"]["difficulty"],
+                            "equipment_type": hit["entity"].get("equipment_type", ""),
+                            "production_line": hit["entity"].get("production_line", ""),
+                            "status": hit["entity"].get("status", ""),
+                            "health": hit["entity"].get("health", -1),
+                            "location": hit["entity"].get("location", ""),
                             "doc_type": hit["entity"]["doc_type"],
                             "chunk_id": hit["entity"]["chunk_id"],
                             "parent_id": hit["entity"]["parent_id"]
@@ -487,6 +506,18 @@ class MilvusIndexConstructionModule:
 
         except Exception as e:
             logger.error(f"加载集合失败: {e}")
+            return False
+
+    def supports_digital_twin_schema(self) -> bool:
+        try:
+            if not self.client.has_collection(self.collection_name):
+                return False
+            info = self.client.describe_collection(collection_name=self.collection_name)
+            fields = {field.get("name") for field in info.get("fields", [])}
+            required_fields = {"entity_name", "equipment_type", "production_line", "status"}
+            return required_fields.issubset(fields)
+        except Exception as e:
+            logger.warning(f"检查 Milvus schema 失败，按不兼容处理: {e}")
             return False
     def close(self):
         """关闭连接"""

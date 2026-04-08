@@ -1,5 +1,9 @@
 import { Activity, Globe, Server, ShieldCheck } from "lucide-react";
 
+function serviceStatusLabel(status: "Healthy" | "Warning"): string {
+  return status === "Healthy" ? "正常" : "告警";
+}
+
 export default function SystemStatusPanel() {
   return (
     <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
@@ -67,7 +71,12 @@ function ServiceStatusItem({ name, status, uptime, latency }: { name: string; st
     <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-sm font-bold text-slate-800">{name}</span>
-        <span className={`h-2 w-2 rounded-full ${status === "Healthy" ? "bg-emerald-500" : "bg-orange-500"}`} />
+        <span className="inline-flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${status === "Healthy" ? "bg-emerald-500" : "bg-orange-500"}`} />
+          <span className={`text-[11px] font-semibold ${status === "Healthy" ? "text-emerald-600" : "text-orange-600"}`}>
+            {serviceStatusLabel(status)}
+          </span>
+        </span>
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div>

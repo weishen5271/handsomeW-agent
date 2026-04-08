@@ -32,18 +32,32 @@ class GraphRAGRuntime:
         self.query_router: IntelligentQueryRouter | None = None
         self.system_ready = False
         self._lock = threading.Lock()
+        self._preferred_llm_client: MyAgentsLLM | None = None
 
-    def ensure_ready(self) -> None:
+    def set_default_llm_client(self, llm_client: MyAgentsLLM | None) -> None:
+        if llm_client is None:
+            return
+        with self._lock:
+            self._preferred_llm_client = llm_client
+            if self.system_ready:
+                self._use_llm_client(llm_client)
+
+    def ensure_ready(self, llm_client: MyAgentsLLM | None = None) -> None:
         if self.system_ready:
+            if llm_client is not None:
+                with self._lock:
+                    self._use_llm_client(llm_client)
             return
         with self._lock:
             if self.system_ready:
+                if llm_client is not None:
+                    self._use_llm_client(llm_client)
                 return
-            self._initialize_system()
+            self._initialize_system(llm_client=llm_client)
             self._build_knowledge_base()
             self.system_ready = True
 
-    def _initialize_system(self):
+    def _initialize_system(self, llm_client: MyAgentsLLM | None = None):
         logger.info("初始化本地迁移 GraphRAG 系统")
         self.data_module = GraphDataPreparationModule(
             uri=self.config.neo4j_uri,
@@ -58,7 +72,7 @@ class GraphRAGRuntime:
             dimension=self.config.milvus_dimension,
             model_name=self.config.embedding_model,
         )
-        self.llm_client = MyAgentsLLM()
+        self.llm_client = llm_client or self._preferred_llm_client or self.llm_client or MyAgentsLLM()
         self.traditional_retrieval = HybridRetrievalModule(
             config=self.config,
             milvus_module=self.index_module,
@@ -90,25 +104,25 @@ class GraphRAGRuntime:
     def _build_knowledge_base(self):
         assert self.data_module and self.index_module and self.traditional_retrieval and self.graph_rag_retrieval
 
-        chunks = None
+        self.data_module.load_graph_data()
+        self.data_module.build_equipment_documents()
+        chunks = self.data_module.chunk_documents(
+            chunk_size=self.config.chunk_size,
+            chunk_overlap=self.config.chunk_overlap,
+        )
+
+        should_rebuild = True
         if self.index_module.has_collection() and self.index_module.load_collection():
-            logger.info("检测到 Milvus 已有集合，直接加载")
-            self.data_module.load_graph_data()
-            self.data_module.build_recipe_documents()
-            chunks = self.data_module.chunk_documents(
-                chunk_size=self.config.chunk_size,
-                chunk_overlap=self.config.chunk_overlap,
-            )
+            should_rebuild = not self.index_module.supports_digital_twin_schema()
+            if should_rebuild:
+                logger.info("检测到旧版或非数字孪生 Milvus schema，准备重建集合")
+            else:
+                logger.info("检测到可复用的数字孪生 Milvus 集合，直接加载")
         else:
             logger.info("未检测到可用集合，开始构建知识库")
-            self.data_module.load_graph_data()
-            self.data_module.build_recipe_documents()
-            chunks = self.data_module.chunk_documents(
-                chunk_size=self.config.chunk_size,
-                chunk_overlap=self.config.chunk_overlap,
-            )
-            if not self.index_module.build_vector_index(chunks):
-                raise RuntimeError("构建向量索引失败")
+
+        if should_rebuild and not self.index_module.build_vector_index(chunks):
+            raise RuntimeError("构建向量索引失败")
 
         self.traditional_retrieval.initialize(chunks)
         self.graph_rag_retrieval.initialize()
@@ -119,7 +133,7 @@ class GraphRAGRuntime:
         top_k: int | None = None,
         llm_client: MyAgentsLLM | None = None,
     ) -> RuntimeQueryResult:
-        self.ensure_ready()
+        self.ensure_ready(llm_client=llm_client)
         assert self.query_router and self.traditional_retrieval
         k = top_k or self.config.top_k
         if llm_client is not None:

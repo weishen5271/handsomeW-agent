@@ -1,0 +1,4 @@
+nodeId,title,path,url,doc_type
+DOC-101,主电机维护指南,/docs/manuals/motor_maintenance.pdf,https://example.com/manuals/motor_maintenance.pdf,maintenance_guide
+DOC-102,输送带控制器操作手册,/docs/manuals/belt_controller_manual.pdf,https://example.com/manuals/belt_controller_manual.pdf,operation_manual
+DOC-103,液压单元点检SOP,/docs/manuals/hydraulic_sop.pdf,https://example.com/manuals/hydraulic_sop.pdf,sop

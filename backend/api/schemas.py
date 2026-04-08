@@ -208,6 +208,30 @@ class AssetRelationResponse(BaseModel):
     created_at: datetime | str
 
 
+class AssetKnowledgeGraphNode(BaseModel):
+    id: str
+    name: str
+    node_type: str
+    labels: list[str] = Field(default_factory=list)
+    properties: dict[str, Any] = Field(default_factory=dict)
+    is_center: bool = False
+
+
+class AssetKnowledgeGraphEdge(BaseModel):
+    source: str
+    target: str
+    relation_type: str
+    properties: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssetKnowledgeGraphResponse(BaseModel):
+    asset_id: str
+    asset_name: str
+    summary: dict[str, int] = Field(default_factory=dict)
+    nodes: list[AssetKnowledgeGraphNode] = Field(default_factory=list)
+    edges: list[AssetKnowledgeGraphEdge] = Field(default_factory=list)
+
+
 class SceneInstanceUpsertRequest(BaseModel):
     asset_id: str = Field(..., min_length=1, max_length=64)
     position_x: float = 0

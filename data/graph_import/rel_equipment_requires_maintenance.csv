@@ -1,0 +1,4 @@
+equipment_id,maintenance_id,maintenance_type,interval
+M-102,MR-9001,保养,90天
+HU-330,MR-9002,点检,30天
+PK-410,MR-9003,校准,60天

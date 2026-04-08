@@ -62,6 +62,14 @@ type SceneConfigPanelProps = {
   token: string;
 };
 
+function relationTypeLabel(relationType: string): string {
+  if (relationType === "upstream") return "上游";
+  if (relationType === "downstream") return "下游";
+  if (relationType === "depends_on") return "依赖";
+  if (relationType === "controls") return "控制";
+  return relationType;
+}
+
 const emptySceneForm = {
   id: "",
   name: "",
@@ -680,10 +688,10 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                           }
                           className="h-10 rounded-xl border border-slate-200 bg-white px-2 text-sm outline-none md:col-span-3"
                         >
-                          <option value="upstream">upstream</option>
-                          <option value="downstream">downstream</option>
-                          <option value="depends_on">depends_on</option>
-                          <option value="controls">controls</option>
+                          <option value="upstream">{relationTypeLabel("upstream")}</option>
+                          <option value="downstream">{relationTypeLabel("downstream")}</option>
+                          <option value="depends_on">{relationTypeLabel("depends_on")}</option>
+                          <option value="controls">{relationTypeLabel("controls")}</option>
                         </select>
                         <select
                           value={item.target_asset_id}

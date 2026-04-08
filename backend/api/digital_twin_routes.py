@@ -14,6 +14,8 @@ from api.digital_twin_store import (
     delete_resource,
     delete_asset,
     delete_scene,
+    get_asset,
+    get_asset_knowledge_graph,
     get_scene,
     get_resource,
     list_asset_relations,
@@ -30,6 +32,7 @@ from api.digital_twin_store import (
 from api.minio_client import MinioStorage
 from api.schemas import (
     AssetRelationResponse,
+    AssetKnowledgeGraphResponse,
     ResourceItemResponse,
     ResourceListResponse,
     ResourcePreviewUrlResponse,
@@ -122,6 +125,28 @@ async def delete_asset_api(asset_id: str, _: dict = Depends(get_current_user)) -
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资产不存在")
     return {"status": "deleted"}
+
+
+@router.get("/assets/{asset_id}", response_model=DigitalAssetResponse)
+async def get_asset_api(asset_id: str, _: dict = Depends(get_current_user)) -> DigitalAssetResponse:
+    row = get_asset(asset_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资产不存在")
+    return DigitalAssetResponse(**row)
+
+
+@router.get("/assets/{asset_id}/knowledge-graph", response_model=AssetKnowledgeGraphResponse)
+async def get_asset_knowledge_graph_api(
+    asset_id: str,
+    _: dict = Depends(get_current_user),
+) -> AssetKnowledgeGraphResponse:
+    try:
+        graph = get_asset_knowledge_graph(asset_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    if graph is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资产不存在")
+    return AssetKnowledgeGraphResponse(**graph)
 
 
 @router.get("/resources", response_model=ResourceListResponse)

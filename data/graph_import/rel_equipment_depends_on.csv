@@ -1,0 +1,3 @@
+source_equipment_id,target_equipment_id,direction
+C-201,M-102,upstream
+PK-410,C-201,upstream

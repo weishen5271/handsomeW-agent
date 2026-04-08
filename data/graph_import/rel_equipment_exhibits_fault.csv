@@ -1,0 +1,4 @@
+equipment_id,fault_id,severity,occurrence_time
+M-102,FM-001,High,2026-04-08T09:00:00+08:00
+M-102,FM-002,Medium,2026-04-08T09:20:00+08:00
+HU-330,FM-003,High,2026-04-08T10:00:00+08:00

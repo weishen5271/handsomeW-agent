@@ -3,7 +3,6 @@ import logging
 import time
 from typing import List
 
-from mpmath import cot
 from openai import OpenAI
 from langchain_core.documents import Document
 
@@ -54,19 +53,18 @@ class GenerationIntegrationModule:
                     context_parts.append(f"{content}")
         context = "\n\n".join(context_parts)
 
-        # LightRAG风格的统一提示词
         prompt = f"""
-           作为一位专业的烹饪助手，请基于以下信息回答用户的问题。
+           作为一位工业设备与数字孪生知识助手，请基于以下检索信息回答用户问题。
 
            检索到的相关信息：
            {context}
 
            用户问题：{question}
 
-           请提供准确、实用的回答。根据问题的性质：
-           - 如果是询问多个菜品，请提供清晰的列表
-           - 如果是询问具体制作方法，请提供详细步骤
-           - 如果是一般性咨询，请提供综合性回答
+           回答要求：
+           - 优先给出设备、产线、传感器、故障、告警、维护相关的直接结论
+           - 如果涉及原因分析，请按“现象 -> 可能根因 -> 建议动作”组织
+           - 如果证据不足，请明确说明不确定性，不要编造
 
            回答：
            """
@@ -100,19 +98,18 @@ class GenerationIntegrationModule:
 
         context = "\n\n".join(context_parts)
 
-        # LightRAG风格的统一提示词
         prompt = f"""
-        作为一位专业的烹饪助手，请基于以下信息回答用户的问题。
+        作为一位工业设备与数字孪生知识助手，请基于以下信息回答用户的问题。
 
         检索到的相关信息：
         {context}
 
         用户问题：{question}
 
-        请提供准确、实用的回答。根据问题的性质：
-        - 如果是询问多个菜品，请提供清晰的列表
-        - 如果是询问具体制作方法，请提供详细步骤
-        - 如果是一般性咨询，请提供综合性回答
+        请提供准确、实用的回答：
+        - 优先总结设备状态、关系链、故障根因或维护建议
+        - 涉及多个对象时请用清晰列表表达
+        - 证据不足时请直接说明
 
         回答：
         """

@@ -22,15 +22,18 @@ class RAGContextResult:
 class GraphRAGBridge:
     """Agent 与本地迁移 GraphRAG 运行时的桥接层。"""
 
-    def __init__(self):
+    def __init__(self, llm_client: MyAgentsLLM | None = None):
         self.runtime = get_graph_rag_runtime()
+        self.llm_client = llm_client
+        self.runtime.set_default_llm_client(llm_client)
 
     @property
     def is_ready(self) -> bool:
         try:
-            self.runtime.ensure_ready()
+            self.runtime.ensure_ready(llm_client=self.llm_client)
             return True
-        except Exception:
+        except Exception as e:
+            logger.error("GraphRAG runtime query failed: %s", e)
             return False
 
     def build_context(self, query: str, llm_client: MyAgentsLLM | None = None) -> RAGContextResult:
@@ -61,8 +64,9 @@ class GraphRAGBridge:
                 sources.append(
                     {
                         "rank": idx + 1,
-                        "recipe_name": meta.get("recipe_name"),
+                        "entity_name": meta.get("entity_name") or meta.get("equipment_name"),
                         "node_id": meta.get("node_id"),
+                        "node_type": meta.get("node_type"),
                         "route_strategy": meta.get("route_strategy"),
                         "search_type": meta.get("search_type"),
                         "retrieval_level": meta.get("retrieval_level"),
@@ -110,9 +114,9 @@ class GraphRAGBridge:
             content = getattr(doc, "page_content", "") or ""
             content = re.sub(r"\s+", " ", content).strip()[:380]
             meta = getattr(doc, "metadata", {}) or {}
-            recipe_name = meta.get("recipe_name", "未知")
+            entity_name = meta.get("entity_name") or meta.get("equipment_name") or meta.get("node_id") or "未知实体"
             retrieval_level = meta.get("retrieval_level", meta.get("search_type", "unknown"))
-            line = f"{idx}. [{recipe_name}] ({retrieval_level}) {content}"
+            line = f"{idx}. [{entity_name}] ({retrieval_level}) {content}"
             if current_len + len(line) > max_context_chars:
                 break
             parts.append(line)

@@ -583,6 +583,207 @@ def list_asset_relations(asset_id: str) -> list[dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
+def get_asset(asset_id: str) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, name, type, status, location, health, model_file, minio_object_key, metadata, created_at, updated_at
+            FROM digital_assets
+            WHERE id = %s
+            """,
+            (asset_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_asset_knowledge_graph(asset_id: str) -> dict[str, Any] | None:
+    asset = get_asset(asset_id)
+    if asset is None:
+        return None
+
+    uri = os.getenv("NEO4J_URI")
+    user = os.getenv("NEO4J_USER")
+    password = os.getenv("NEO4J_PASSWORD")
+    database = os.getenv("NEO4J_DATABASE") or None
+    if not uri or not user or not password:
+        return {
+            "asset_id": asset_id,
+            "asset_name": asset["name"],
+            "summary": {"node_count": 1, "edge_count": 0},
+            "nodes": [
+                {
+                    "id": asset_id,
+                    "name": asset["name"],
+                    "node_type": "Equipment",
+                    "labels": ["Equipment"],
+                    "properties": {
+                        "type": asset["type"],
+                        "status": asset["status"],
+                        "location": asset["location"],
+                        "health": asset["health"],
+                    },
+                    "is_center": True,
+                }
+            ],
+            "edges": [],
+        }
+
+    driver = GraphDatabase.driver(uri, auth=(user, password))
+    try:
+        with driver.session(database=database) as session:
+            center_record = session.run(
+                """
+                MATCH (n)
+                WHERE (n:Equipment OR n:Asset) AND coalesce(n.nodeId, n.id) = $asset_id
+                RETURN n
+                LIMIT 1
+                """,
+                {"asset_id": asset_id},
+            ).single()
+            if center_record is None:
+                return {
+                    "asset_id": asset_id,
+                    "asset_name": asset["name"],
+                    "summary": {"node_count": 1, "edge_count": 0},
+                    "nodes": [
+                        {
+                            "id": asset_id,
+                            "name": asset["name"],
+                            "node_type": "Equipment",
+                            "labels": ["Equipment"],
+                            "properties": {
+                                "type": asset["type"],
+                                "status": asset["status"],
+                                "location": asset["location"],
+                                "health": asset["health"],
+                            },
+                            "is_center": True,
+                        }
+                    ],
+                    "edges": [],
+                }
+
+            center_node = center_record["n"]
+            nodes_map: dict[str, dict[str, Any]] = {}
+            edges_map: dict[tuple[str, str, str], dict[str, Any]] = {}
+
+            def upsert_node(node, *, is_center: bool = False) -> None:
+                node_id = str(node.get("nodeId", node.get("id", "")))
+                if not node_id:
+                    return
+                labels = list(node.labels)
+                current = nodes_map.get(node_id)
+                payload = {
+                    "id": node_id,
+                    "name": str(node.get("name", node_id)),
+                    "node_type": labels[0] if labels else "Entity",
+                    "labels": labels,
+                    "properties": dict(node),
+                    "is_center": is_center,
+                }
+                if current:
+                    current["properties"] = {**current["properties"], **payload["properties"]}
+                    current["is_center"] = current["is_center"] or is_center
+                else:
+                    nodes_map[node_id] = payload
+
+            upsert_node(center_node, is_center=True)
+
+            neighbor_records = session.run(
+                """
+                MATCH (center)-[r]-(neighbor)
+                WHERE coalesce(center.nodeId, center.id) = $asset_id
+                RETURN center, r, neighbor
+                ORDER BY type(r), coalesce(neighbor.name, coalesce(neighbor.nodeId, neighbor.id))
+                LIMIT 40
+                """,
+                {"asset_id": asset_id},
+            )
+            for record in neighbor_records:
+                center = record["center"]
+                neighbor = record["neighbor"]
+                relation = record["r"]
+                upsert_node(center, is_center=True)
+                upsert_node(neighbor)
+                source_id = str(relation.start_node.get("nodeId", relation.start_node.get("id", "")))
+                target_id = str(relation.end_node.get("nodeId", relation.end_node.get("id", "")))
+                edge_key = (source_id, target_id, relation.type)
+                edges_map[edge_key] = {
+                    "source": source_id,
+                    "target": target_id,
+                    "relation_type": relation.type,
+                    "properties": dict(relation),
+                }
+
+            related_asset_rows = list_asset_relations(asset_id)
+            for relation in related_asset_rows:
+                source_id = relation["source_asset_id"]
+                target_id = relation["target_asset_id"]
+                if source_id == asset_id and target_id not in nodes_map:
+                    target_asset = get_asset(target_id)
+                    if target_asset:
+                        nodes_map[target_id] = {
+                            "id": target_id,
+                            "name": target_asset["name"],
+                            "node_type": "Equipment",
+                            "labels": ["Equipment"],
+                            "properties": {
+                                "type": target_asset["type"],
+                                "status": target_asset["status"],
+                                "location": target_asset["location"],
+                                "health": target_asset["health"],
+                            },
+                            "is_center": False,
+                        }
+                if target_id == asset_id and source_id not in nodes_map:
+                    source_asset = get_asset(source_id)
+                    if source_asset:
+                        nodes_map[source_id] = {
+                            "id": source_id,
+                            "name": source_asset["name"],
+                            "node_type": "Equipment",
+                            "labels": ["Equipment"],
+                            "properties": {
+                                "type": source_asset["type"],
+                                "status": source_asset["status"],
+                                "location": source_asset["location"],
+                                "health": source_asset["health"],
+                            },
+                            "is_center": False,
+                        }
+                edge_key = (source_id, target_id, relation["relation_type"])
+                edges_map.setdefault(
+                    edge_key,
+                    {
+                        "source": source_id,
+                        "target": target_id,
+                        "relation_type": relation["relation_type"],
+                        "properties": {"source": "asset_relations"},
+                    },
+                )
+
+            node_type_counts: dict[str, int] = {}
+            for node in nodes_map.values():
+                node_type = node["node_type"]
+                node_type_counts[node_type] = node_type_counts.get(node_type, 0) + 1
+
+            return {
+                "asset_id": asset_id,
+                "asset_name": asset["name"],
+                "summary": {
+                    "node_count": len(nodes_map),
+                    "edge_count": len(edges_map),
+                    **{f"{key.lower()}_count": value for key, value in node_type_counts.items()},
+                },
+                "nodes": list(nodes_map.values()),
+                "edges": list(edges_map.values()),
+            }
+    except Neo4jError as exc:
+        raise RuntimeError(f"Neo4j 读取资产知识图谱失败: {exc}") from exc
+    finally:
+        driver.close()
+
+
 def list_scenes(
     keyword: str | None = None,
     page: int = 1,

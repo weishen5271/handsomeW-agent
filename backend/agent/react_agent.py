@@ -73,7 +73,7 @@ class ReactAgent(BaseAgent):
                 {"iteration": iteration + 1, "max_iterations": max_iterations},
             )
 
-            message_list = self.context.build_message(BASE_PROMPT_TEMPLATE)
+            message_list = self.context.build_message(self.system_prompt or BASE_PROMPT_TEMPLATE)
             llm_response = await self.llm.invoke(
                 message_list,
                 tools=self.context.get_tool_definitions(),

@@ -1,10 +1,11 @@
 """
-真正的图RAG检索模块
-基于图结构的知识推理和检索，而非简单关键词匹配
+图 RAG 检索模块
+面向数字孪生场景提供多跳遍历、关系路径和子图摘要。
 """
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -21,6 +22,12 @@ class QueryType(Enum):
     SUBGRAPH = "subgraph"
     PATH_FINDING = "path_finding"
     CLUSTERING = "clustering"
+    FAULT_DIAGNOSIS = "fault_diagnosis"
+    IMPACT_ANALYSIS = "impact_analysis"
+    MAINTENANCE_QUERY = "maintenance_query"
+    ALARM_CAUSE = "alarm_cause_analysis"
+    SPARE_PART_QUERY = "spare_part_query"
+    DOCUMENT_SEARCH = "document_search"
 
 
 @dataclass
@@ -49,7 +56,7 @@ class KnowledgeSubgraph:
     connected_nodes: List[Dict[str, Any]]
     relationships: List[Dict[str, Any]]
     graph_metrics: Dict[str, float]
-    reasoning_chains: List[List[str]]
+    reasoning_chains: List[str]
 
 
 class GraphRAGRetrieval:
@@ -64,19 +71,23 @@ class GraphRAGRetrieval:
                 self.config.neo4j_uri,
                 auth=(self.config.neo4j_user, self.config.neo4j_password),
             )
-            with self.driver.session() as session:
+            with self.driver.session(database=self.config.neo4j_database) as session:
                 session.run("RETURN 1 AS ok").single()
-            logger.info("图RAG Neo4j连接初始化成功")
-        except Exception as e:
-            logger.error("图RAG Neo4j连接初始化失败: %s", e)
+            logger.info("图 RAG Neo4j 连接初始化成功")
+        except Exception as exc:
+            logger.error("图 RAG Neo4j 连接初始化失败: %s", exc)
             self.driver = None
 
     def understand_graph_query(self, query: str) -> GraphQuery:
         prompt = f"""
-分析这个问题并返回图查询JSON：
+请把下面工业设备问题转成图查询 JSON：
+- query_type: 只能是 entity_relation/multi_hop/subgraph/path_finding/clustering/fault_diagnosis/impact_analysis/maintenance_query/alarm_cause_analysis/spare_part_query/document_search
+- source_entities: 核心设备/传感器/产线/故障
+- target_entities: 若问题中明确提到目标实体则填写
+- relation_types: 若有关系偏好，可从 CONTAINS/LOCATED_AT/DEPENDS_ON/EXHIBITS/CAUSES/REQUIRES/USES/AFFECTS/HAS_DOC 中选择
+- max_depth: 1-4
+
 问题：{query}
-字段：query_type/source_entities/target_entities/relation_types/max_depth
-query_type 只能取 [entity_relation,multi_hop,subgraph,path_finding,clustering]
 """
         try:
             response = self.llm_client.invoke_blocking(
@@ -92,241 +103,288 @@ query_type 只能取 [entity_relation,multi_hop,subgraph,path_finding,clustering
             result = json.loads(content)
             return GraphQuery(
                 query_type=QueryType(result.get("query_type", "subgraph")),
-                source_entities=result.get("source_entities", []) or [query],
+                source_entities=result.get("source_entities", []) or self._extract_entities_fallback(query),
                 target_entities=result.get("target_entities", []),
                 relation_types=result.get("relation_types", []),
-                max_depth=int(result.get("max_depth", self.config.max_graph_depth)),
+                max_depth=max(1, min(int(result.get("max_depth", self.config.max_graph_depth)), 4)),
                 max_nodes=50,
+                constraints=result.get("constraints", {}),
             )
-        except Exception as e:
-            logger.error("查询意图理解失败: %s", e)
-            return GraphQuery(query_type=QueryType.SUBGRAPH, source_entities=[query], max_depth=self.config.max_graph_depth)
+        except Exception as exc:
+            logger.error("查询意图理解失败: %s", exc)
+            return self._fallback_graph_query(query)
+
+    def _fallback_graph_query(self, query: str) -> GraphQuery:
+        normalized = query.lower()
+        query_type = QueryType.SUBGRAPH
+        relation_types: List[str] | None = None
+        if any(token in normalized for token in ["故障", "异常", "振动", "过载", "温度", "压力", "根因", "原因"]):
+            query_type = QueryType.FAULT_DIAGNOSIS
+            relation_types = ["EXHIBITS", "AFFECTS", "CAUSES", "DEPENDS_ON"]
+        elif any(token in normalized for token in ["影响", "上游", "下游", "依赖", "传导", "波及"]):
+            query_type = QueryType.IMPACT_ANALYSIS
+            relation_types = ["DEPENDS_ON", "AFFECTS", "CONTAINS"]
+        elif any(token in normalized for token in ["告警", "报警"]):
+            query_type = QueryType.ALARM_CAUSE
+            relation_types = ["CAUSES", "EXHIBITS", "AFFECTS"]
+        elif any(token in normalized for token in ["备件", "更换", "耗材"]):
+            query_type = QueryType.SPARE_PART_QUERY
+            relation_types = ["USES", "REQUIRES"]
+        elif any(token in normalized for token in ["维护", "保养", "维修", "检修", "点检"]):
+            query_type = QueryType.MAINTENANCE_QUERY
+            relation_types = ["REQUIRES", "DEPENDS_ON"]
+        elif any(token in normalized for token in ["手册", "文档", "指南", "说明书"]):
+            query_type = QueryType.DOCUMENT_SEARCH
+            relation_types = ["HAS_DOC"]
+        elif any(token in normalized for token in ["哪些设备", "关联", "关系", "在哪条产线"]):
+            query_type = QueryType.ENTITY_RELATION
+            relation_types = ["LOCATED_AT", "CONTAINS", "BELONGS_TO", "HAS"]
+        elif any(token in normalized for token in ["路径", "链路"]):
+            query_type = QueryType.PATH_FINDING
+        elif any(token in normalized for token in ["原因", "根因"]):
+            query_type = QueryType.MULTI_HOP
+        return GraphQuery(
+            query_type=query_type,
+            source_entities=self._extract_entities_fallback(query),
+            relation_types=relation_types,
+            max_depth=self.config.max_graph_depth,
+        )
+
+    def _extract_entities_fallback(self, query: str) -> List[str]:
+        parts = re.findall(r"[A-Za-z0-9\-_]+|[\u4e00-\u9fff]{2,}", query)
+        return [part for part in parts[:3]] or [query]
 
     def graph_rag_search(self, query: str, top_k: int = 5) -> List[Document]:
-        logger.info("开始图RAG检索: %s", query)
+        logger.info("开始图 RAG 检索: %s", query)
         if not self.driver:
-            logger.error("Neo4j连接未建立，返回空结果")
             return []
 
         graph_query = self.understand_graph_query(query)
-        logger.info("查询类型: %s", graph_query.query_type.value)
-
         try:
-            if graph_query.query_type in [QueryType.MULTI_HOP, QueryType.PATH_FINDING, QueryType.ENTITY_RELATION]:
-                paths = self.multi_hop_traversal(graph_query)
-                docs = self._paths_to_documents(paths, query)
+            if graph_query.query_type in {
+                QueryType.MULTI_HOP,
+                QueryType.PATH_FINDING,
+                QueryType.ENTITY_RELATION,
+                QueryType.FAULT_DIAGNOSIS,
+                QueryType.IMPACT_ANALYSIS,
+                QueryType.ALARM_CAUSE,
+            }:
+                docs = self._paths_to_documents(self.multi_hop_traversal(graph_query))
             else:
                 subgraph = self.extract_knowledge_subgraph(graph_query)
-                reasoning_chains = self.graph_structure_reasoning(subgraph, query)
-                docs = self._subgraph_to_documents(subgraph, reasoning_chains, query)
-
-            docs = self._rank_by_graph_relevance(docs, query)
-            logger.info("图RAG检索完成，返回 %d 个结果", len(docs[:top_k]))
+                docs = self._subgraph_to_documents(subgraph, graph_query.query_type)
+            docs = self._rank_by_graph_relevance(docs)
             return docs[:top_k]
-        except Exception as e:
-            logger.error("图RAG检索失败: %s", e)
+        except Exception as exc:
+            logger.error("图 RAG 检索失败: %s", exc)
             return []
 
     def multi_hop_traversal(self, graph_query: GraphQuery) -> List[GraphPath]:
-        paths: List[GraphPath] = []
         if not self.driver:
-            return paths
-
+            return []
+        paths: List[GraphPath] = []
         try:
-            with self.driver.session() as session:
-                query = f"""
-                UNWIND $source_entities as source_name
-                MATCH (source)
-                WHERE toString(source.name) CONTAINS source_name OR toString(source.nodeId) = source_name
-                MATCH path = (source)-[*1..{graph_query.max_depth}]-(target)
-                WHERE source <> target
-                WITH path, source, target, length(path) as path_len, relationships(path) as rels, nodes(path) as path_nodes
-                WITH path, source, target, path_len, rels, path_nodes, (1.0 / path_len) as relevance
-                ORDER BY relevance DESC
-                LIMIT 20
-                RETURN path_nodes, rels, path_len, relevance
-                """
-                cursor = session.run(query, {"source_entities": graph_query.source_entities})
+            with self.driver.session(database=self.config.neo4j_database) as session:
+                relation_filter = ""
+                params = {
+                    "source_entities": graph_query.source_entities,
+                    "max_depth": graph_query.max_depth,
+                    "limit": max(10, self.config.top_k * 4),
+                }
+                if graph_query.relation_types:
+                    relation_filter = "AND ALL(rel IN relationships(path) WHERE type(rel) IN $relation_types)"
+                    params["relation_types"] = graph_query.relation_types
+                cursor = session.run(
+                    f"""
+                    UNWIND $source_entities AS source_name
+                    MATCH (source)
+                    WHERE toLower(coalesce(source.name, '')) CONTAINS toLower(source_name)
+                       OR toLower(coalesce(source.nodeId, source.id, '')) = toLower(source_name)
+                    MATCH path = (source)-[*1..{graph_query.max_depth}]-(target)
+                    WHERE source <> target
+                    {relation_filter}
+                    RETURN nodes(path) AS path_nodes,
+                           relationships(path) AS rels,
+                           length(path) AS path_len
+                    LIMIT $limit
+                    """,
+                    params,
+                )
                 for record in cursor:
-                    parsed = self._parse_neo4j_path(record)
+                    parsed = self._parse_neo4j_path(record, graph_query.query_type)
                     if parsed:
                         paths.append(parsed)
-        except Exception as e:
-            logger.error("多跳遍历失败: %s", e)
-
+        except Exception as exc:
+            logger.error("多跳遍历失败: %s", exc)
         return paths
 
     def extract_knowledge_subgraph(self, graph_query: GraphQuery) -> KnowledgeSubgraph:
         if not self.driver:
-            return self._fallback_subgraph_extraction(graph_query)
+            return self._empty_subgraph()
         try:
-            with self.driver.session() as session:
-                cypher_query = f"""
-                UNWIND $source_entities as entity_name
-                MATCH (source)
-                WHERE toString(source.name) CONTAINS entity_name OR toString(source.nodeId) = entity_name
-                MATCH (source)-[r*1..{graph_query.max_depth}]-(neighbor)
-                WITH source, collect(DISTINCT neighbor) as neighbors, collect(DISTINCT r) as relationships
-                WHERE size(neighbors) <= $max_nodes
-                RETURN source,
-                       neighbors[0..{graph_query.max_nodes}] as nodes,
-                       relationships[0..{graph_query.max_nodes}] as rels,
-                       {{
-                           node_count: size(neighbors),
-                           relationship_count: size(relationships),
-                           density: CASE WHEN size(neighbors) > 1
-                                         THEN toFloat(size(relationships)) / (size(neighbors) * (size(neighbors) - 1) / 2)
-                                         ELSE 0.0 END
-                       }} as metrics
-                """
+            with self.driver.session(database=self.config.neo4j_database) as session:
                 record = session.run(
-                    cypher_query,
-                    {"source_entities": graph_query.source_entities, "max_nodes": graph_query.max_nodes},
+                    f"""
+                    UNWIND $source_entities AS entity_name
+                    MATCH (source)
+                    WHERE toLower(coalesce(source.name, '')) CONTAINS toLower(entity_name)
+                       OR toLower(coalesce(source.nodeId, source.id, '')) = toLower(entity_name)
+                    MATCH path = (source)-[*1..{graph_query.max_depth}]-(neighbor)
+                    WITH source,
+                         collect(DISTINCT neighbor)[0..{graph_query.max_nodes}] AS nodes,
+                         collect(path)[0..20] AS paths
+                    RETURN source, nodes, paths
+                    LIMIT 1
+                    """,
+                    {"source_entities": graph_query.source_entities},
                 ).single()
-                if record:
-                    return self._build_knowledge_subgraph(record)
-        except Exception as e:
-            logger.error("子图提取失败: %s", e)
-        return self._fallback_subgraph_extraction(graph_query)
-
-    def graph_structure_reasoning(self, subgraph: KnowledgeSubgraph, query: str) -> List[str]:
-        try:
-            patterns = self._identify_reasoning_patterns(subgraph)
-            chains = []
-            for pattern in patterns:
-                chain = self._build_reasoning_chain(pattern, subgraph)
-                if chain:
-                    chains.append(chain)
-            return self._validate_reasoning_chains(chains, query)
-        except Exception as e:
-            logger.error("图结构推理失败: %s", e)
-            return []
-
-    def _parse_neo4j_path(self, record) -> Optional[GraphPath]:
-        try:
-            path_nodes = []
-            for node in record["path_nodes"]:
-                path_nodes.append(
-                    {
-                        "id": node.get("nodeId", ""),
-                        "name": node.get("name", ""),
-                        "labels": list(node.labels),
-                        "properties": dict(node),
-                    }
+                if not record:
+                    return self._empty_subgraph()
+                central_node = self._node_to_dict(record["source"])
+                connected_nodes = [self._node_to_dict(node) for node in record.get("nodes", [])]
+                relationships = []
+                for path in record.get("paths", []):
+                    if path is None:
+                        continue
+                    for rel in path.relationships:
+                        relationships.append({"type": rel.type, **dict(rel)})
+                density = 0.0
+                node_count = len(connected_nodes)
+                rel_count = len(relationships)
+                if node_count > 1:
+                    density = float(rel_count) / max((node_count * (node_count - 1)) / 2, 1)
+                return KnowledgeSubgraph(
+                    central_nodes=[central_node],
+                    connected_nodes=connected_nodes,
+                    relationships=relationships,
+                    graph_metrics={
+                        "node_count": node_count,
+                        "relationship_count": rel_count,
+                        "density": density,
+                    },
+                    reasoning_chains=self._derive_reasoning_chains(central_node, connected_nodes, relationships),
                 )
+        except Exception as exc:
+            logger.error("子图提取失败: %s", exc)
+            return self._empty_subgraph()
 
-            relationships = []
-            for rel in record["rels"]:
-                relationships.append({"type": rel.type, "properties": dict(rel)})
+    def _empty_subgraph(self) -> KnowledgeSubgraph:
+        return KnowledgeSubgraph([], [], [], {}, [])
 
-            return GraphPath(
-                nodes=path_nodes,
-                relationships=relationships,
-                path_length=int(record["path_len"]),
-                relevance_score=float(record["relevance"]),
-                path_type="multi_hop",
-            )
-        except Exception as e:
-            logger.error("路径解析失败: %s", e)
-            return None
-
-    def _build_knowledge_subgraph(self, record) -> KnowledgeSubgraph:
-        try:
-            central_nodes = [dict(record["source"])]
-            connected_nodes = [dict(node) for node in record["nodes"]]
-            flattened_rels = []
-            for rel_group in record["rels"]:
-                for rel in rel_group:
-                    flattened_rels.append({"type": rel.type, **dict(rel)})
-            return KnowledgeSubgraph(
-                central_nodes=central_nodes,
-                connected_nodes=connected_nodes,
-                relationships=flattened_rels,
-                graph_metrics=record["metrics"],
-                reasoning_chains=[],
-            )
-        except Exception as e:
-            logger.error("构建子图失败: %s", e)
-            return self._fallback_subgraph_extraction(GraphQuery(query_type=QueryType.SUBGRAPH, source_entities=[]))
-
-    def _fallback_subgraph_extraction(self, graph_query: GraphQuery) -> KnowledgeSubgraph:
-        return KnowledgeSubgraph(
-            central_nodes=[],
-            connected_nodes=[],
-            relationships=[],
-            graph_metrics={},
-            reasoning_chains=[],
-        )
-
-    def _identify_reasoning_patterns(self, subgraph: KnowledgeSubgraph) -> List[str]:
-        return ["因果关系", "组成关系", "相似关系"]
-
-    def _build_reasoning_chain(self, pattern: str, subgraph: KnowledgeSubgraph) -> Optional[str]:
-        return f"基于{pattern}的推理链"
-
-    def _validate_reasoning_chains(self, chains: List[str], query: str) -> List[str]:
+    def _derive_reasoning_chains(
+        self,
+        central_node: Dict[str, Any],
+        connected_nodes: List[Dict[str, Any]],
+        relationships: List[Dict[str, Any]],
+    ) -> List[str]:
+        central_name = central_node.get("name", "该实体")
+        chains: List[str] = []
+        rel_types = [item.get("type", "RELATED_TO") for item in relationships]
+        if "EXHIBITS" in rel_types:
+            chains.append(f"{central_name} 与故障模式存在直接表现关系，可用于故障诊断和根因排查。")
+        if "DEPENDS_ON" in rel_types:
+            chains.append(f"{central_name} 与上下游设备存在依赖关系，故障可能沿依赖链传播。")
+        if "CAUSES" in rel_types:
+            chains.append(f"{central_name} 相关故障与告警存在因果链，可用于告警归因。")
+        if "HAS_DOC" in rel_types:
+            chains.append(f"{central_name} 已关联文档，可进一步结合操作手册或维护指南回答。")
+        if "REQUIRES" in rel_types:
+            chains.append(f"{central_name} 已关联维护记录或维护要求，可用于保养周期和维修历史查询。")
+        if "USES" in rel_types:
+            chains.append(f"{central_name} 已关联备件信息，可用于更换件和耗材排查。")
+        if not chains and connected_nodes:
+            chains.append(f"{central_name} 周边已提取 {len(connected_nodes)} 个关联实体，可作为关系网络上下文。")
         return chains[:3]
 
-    def _subgraph_to_documents(
-        self,
-        subgraph: KnowledgeSubgraph,
-        reasoning_chains: List[str],
-        query: str,
-    ) -> List[Document]:
-        subgraph_desc = self._build_subgraph_description(subgraph)
-        doc = Document(
-            page_content=subgraph_desc,
-            metadata={
-                "search_type": "knowledge_subgraph",
-                "node_count": len(subgraph.connected_nodes),
-                "relationship_count": len(subgraph.relationships),
-                "graph_density": subgraph.graph_metrics.get("density", 0.0),
-                "reasoning_chains": reasoning_chains,
-                "recipe_name": subgraph.central_nodes[0].get("name", "知识子图") if subgraph.central_nodes else "知识子图",
-                "relevance_score": 0.7,
-            },
-        )
-        return [doc]
+    def _parse_neo4j_path(self, record, query_type: QueryType) -> Optional[GraphPath]:
+        try:
+            nodes = [self._node_to_dict(node) for node in record["path_nodes"]]
+            relationships = [{"type": rel.type, **dict(rel)} for rel in record["rels"]]
+            path_length = int(record["path_len"])
+            relevance = 1.0 / max(path_length, 1)
+            return GraphPath(
+                nodes=nodes,
+                relationships=relationships,
+                path_length=path_length,
+                relevance_score=relevance,
+                path_type=query_type.value,
+            )
+        except Exception as exc:
+            logger.error("路径解析失败: %s", exc)
+            return None
 
-    def _build_subgraph_description(self, subgraph: KnowledgeSubgraph) -> str:
-        central_names = [node.get("name", "未知") for node in subgraph.central_nodes]
-        node_count = len(subgraph.connected_nodes)
-        rel_count = len(subgraph.relationships)
-        return f"关于 {', '.join(central_names) if central_names else '该主题'} 的知识网络，包含 {node_count} 个相关概念和 {rel_count} 个关系。"
+    def _node_to_dict(self, node) -> Dict[str, Any]:
+        return {
+            "id": node.get("nodeId", node.get("id", "")),
+            "name": node.get("name", node.get("nodeId", node.get("id", ""))),
+            "labels": list(node.labels),
+            "properties": dict(node),
+        }
 
-    def _rank_by_graph_relevance(self, documents: List[Document], query: str) -> List[Document]:
-        return sorted(documents, key=lambda x: (x.metadata or {}).get("relevance_score", 0.0), reverse=True)
+    def _subgraph_to_documents(self, subgraph: KnowledgeSubgraph, query_type: QueryType) -> List[Document]:
+        central_name = subgraph.central_nodes[0].get("name", "知识子图") if subgraph.central_nodes else "知识子图"
+        connected_names = [node.get("name", "未知") for node in subgraph.connected_nodes[:10]]
+        relation_types = [item.get("type", "RELATED_TO") for item in subgraph.relationships[:10]]
+        content_parts = [
+            f"核心对象: {central_name}",
+            f"相关实体数: {len(subgraph.connected_nodes)}",
+            f"关系数: {len(subgraph.relationships)}",
+        ]
+        if connected_names:
+            content_parts.append(f"相关实体: {', '.join(connected_names)}")
+        if relation_types:
+            content_parts.append(f"关系类型: {', '.join(relation_types)}")
+        for chain in subgraph.reasoning_chains:
+            content_parts.append(f"推理链: {chain}")
+        return [
+            Document(
+                page_content="\n".join(content_parts),
+                metadata={
+                    "search_type": "knowledge_subgraph",
+                    "entity_name": central_name,
+                    "query_type": query_type.value,
+                    "node_count": len(subgraph.connected_nodes),
+                    "relationship_count": len(subgraph.relationships),
+                    "graph_density": subgraph.graph_metrics.get("density", 0.0),
+                    "reasoning_chains": subgraph.reasoning_chains,
+                    "relevance_score": 0.78,
+                },
+            )
+        ]
 
     def _build_path_description(self, path: GraphPath) -> str:
-        node_names = [n.get("name") or n.get("id") or "unknown" for n in path.nodes]
-        rel_types = [r.get("type", "REL") for r in path.relationships]
+        node_names = [item.get("name") or item.get("id") or "unknown" for item in path.nodes]
+        rel_types = [item.get("type", "REL") for item in path.relationships]
         return (
             f"路径类型: {path.path_type}\n"
             f"路径长度: {path.path_length}\n"
             f"节点链: {' -> '.join(node_names)}\n"
-            f"关系: {', '.join(rel_types)}"
+            f"关系链: {' -> '.join(rel_types)}"
         )
 
-    def _paths_to_documents(self, paths: List[GraphPath], query: str) -> List[Document]:
-        documents = []
+    def _paths_to_documents(self, paths: List[GraphPath]) -> List[Document]:
+        documents: List[Document] = []
         for path in paths:
+            first_name = path.nodes[0].get("name", "图结构结果") if path.nodes else "图结构结果"
             documents.append(
                 Document(
                     page_content=self._build_path_description(path),
                     metadata={
                         "search_type": "graph_path",
+                        "entity_name": first_name,
+                        "query_type": path.path_type,
                         "path_length": path.path_length,
                         "relevance_score": path.relevance_score,
                         "path_type": path.path_type,
-                        "node_count": len(path.nodes),
-                        "relationship_count": len(path.relationships),
-                        "recipe_name": path.nodes[0].get("name", "图结构结果") if path.nodes else "图结构结果",
                     },
                 )
             )
         return documents
 
+    def _rank_by_graph_relevance(self, documents: List[Document]) -> List[Document]:
+        return sorted(documents, key=lambda item: (item.metadata or {}).get("relevance_score", 0.0), reverse=True)
+
     def close(self):
         if self.driver:
             self.driver.close()
-            logger.info("图RAG检索系统已关闭")
+            logger.info("图 RAG Neo4j 连接已关闭")

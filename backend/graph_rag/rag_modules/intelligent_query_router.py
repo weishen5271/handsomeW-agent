@@ -93,27 +93,92 @@ class IntelligentQueryRouter:
             return self._rule_based_analysis(query)
 
     def _rule_based_analysis(self, query: str) -> QueryAnalysis:
-        complexity_keywords = ["为什么", "如何", "关系", "影响", "原因", "比较", "区别"]
-        relation_keywords = ["配", "搭配", "组合", "相关", "联系", "连接", "路径", "多跳"]
+        complexity_keywords = [
+            "为什么", "如何", "原因", "分析", "影响", "比较", "区别", "诊断", "排查", "解决",
+        ]
+        relation_keywords = [
+            "依赖", "连接", "关联", "上游", "下游", "影响", "传导", "路径", "关系", "联动",
+        ]
+        fault_keywords = ["故障", "异常", "报警", "告警", "损坏", "失效", "振动", "温度过高", "压力异常"]
+        maintenance_keywords = ["保养", "维护", "维修", "检修", "点检", "更换", "巡检"]
+        document_keywords = ["手册", "文档", "指南", "说明书", "SOP", "规程"]
+        status_keywords = ["状态", "健康", "健康度", "参数", "运行情况", "多少", "是什么", "在哪"]
 
         complexity = sum(1 for kw in complexity_keywords if kw in query) / len(complexity_keywords)
         relation_intensity = sum(1 for kw in relation_keywords if kw in query) / len(relation_keywords)
+        entity_tokens = re.findall(r"[A-Za-z0-9\-_]+|[\u4e00-\u9fff]{2,}", query)
+        entity_count = max(1, len(entity_tokens))
+
+        if any(kw in query for kw in fault_keywords):
+            return QueryAnalysis(
+                query_complexity=max(complexity, 0.8),
+                relationship_intensity=max(relation_intensity, 0.7),
+                reasoning_required=True,
+                entity_count=entity_count,
+                recommended_strategy=SearchStrategy.GRAPH_RAG,
+                confidence=0.82,
+                reasoning="检测到故障/告警/异常关键词，优先使用图检索进行根因与关系分析。",
+            )
+
+        if any(kw in query for kw in ["影响", "下游", "上游", "传导", "依赖"]):
+            return QueryAnalysis(
+                query_complexity=max(complexity, 0.7),
+                relationship_intensity=max(relation_intensity, 0.9),
+                reasoning_required=True,
+                entity_count=entity_count,
+                recommended_strategy=SearchStrategy.GRAPH_RAG,
+                confidence=0.86,
+                reasoning="检测到影响范围或依赖链问题，需要多跳遍历，优先图检索。",
+            )
+
+        if any(kw in query for kw in maintenance_keywords):
+            return QueryAnalysis(
+                query_complexity=max(complexity, 0.35),
+                relationship_intensity=max(relation_intensity, 0.3),
+                reasoning_required=False,
+                entity_count=entity_count,
+                recommended_strategy=SearchStrategy.HYBRID_TRADITIONAL,
+                confidence=0.76,
+                reasoning="维护查询以事实检索为主，优先走混合检索。",
+            )
+
+        if any(kw in query for kw in document_keywords):
+            return QueryAnalysis(
+                query_complexity=max(complexity, 0.4),
+                relationship_intensity=max(relation_intensity, 0.25),
+                reasoning_required=False,
+                entity_count=entity_count,
+                recommended_strategy=SearchStrategy.HYBRID_TRADITIONAL,
+                confidence=0.78,
+                reasoning="文档/手册查询更适合向量与实体混合检索。",
+            )
+
+        if any(kw in query for kw in status_keywords):
+            return QueryAnalysis(
+                query_complexity=max(complexity, 0.3),
+                relationship_intensity=max(relation_intensity, 0.25),
+                reasoning_required=False,
+                entity_count=entity_count,
+                recommended_strategy=SearchStrategy.HYBRID_TRADITIONAL,
+                confidence=0.72,
+                reasoning="状态与基础属性查询以实体事实检索为主。",
+            )
 
         if complexity > 0.45 and relation_intensity > 0.3:
             strategy = SearchStrategy.COMBINED
-            reasoning = "问题兼具推理与实体关系，使用组合策略。"
+            reasoning = "问题兼具推理和关系链路，使用组合检索。"
         elif complexity > 0.3 or relation_intensity > 0.3:
             strategy = SearchStrategy.GRAPH_RAG
             reasoning = "关系/推理信号明显，优先图检索。"
         else:
-            strategy = SearchStrategy.HYBRID_TRADITIONAL
-            reasoning = "问题偏事实检索，优先传统混合检索。"
+            strategy = SearchStrategy.COMBINED
+            reasoning = "默认使用组合检索，兼顾实体事实与图关系。"
 
         return QueryAnalysis(
             query_complexity=complexity,
             relationship_intensity=relation_intensity,
             reasoning_required=complexity > 0.3,
-            entity_count=len(query.split()),
+            entity_count=entity_count,
             recommended_strategy=strategy,
             confidence=0.6,
             reasoning=reasoning,

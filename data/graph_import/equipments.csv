@@ -1,0 +1,5 @@
+nodeId,name,type,status,health,location,model_file,description
+M-102,主电机,动力设备,Warning,68,2号生产线,motor_main.glb,负责2号线主驱动输出
+C-201,输送带控制器,控制单元,Normal,98,2号生产线,belt_controller.glb,负责输送带启停与速度控制
+HU-330,液压单元,液压设备,Warning,74,3号生产线,hydraulic_unit.glb,负责压装工位液压供能
+PK-410,包装机械臂,执行设备,Normal,91,1号生产线,packing_arm.glb,负责成品抓取与装箱

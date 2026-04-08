@@ -1,0 +1,5 @@
+nodeId,name,type,status,sampling_hz,equipment_id
+S-05,振动传感器,振动传感器,Normal,5000,M-102
+S-06,温度传感器,温度传感器,Warning,1,M-102
+S-11,压力传感器,压力传感器,Normal,50,HU-330
+S-18,位置传感器,位置传感器,Normal,100,PK-410

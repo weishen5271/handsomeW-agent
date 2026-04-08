@@ -1,0 +1,4 @@
+nodeId,name,location,capacity
+PL-01,1号生产线,A车间,100
+PL-02,2号生产线,A车间,120
+PL-03,3号生产线,B车间,90

@@ -9,6 +9,21 @@ const alarms = [
   { id: "ALM-004", asset: "输送带 C-201", severity: "Medium", message: "电机温度过高 (85°C)", time: "2小时前", status: "Resolved" },
 ];
 
+function alarmSeverityLabel(severity: string): string {
+  if (severity === "Critical") return "严重";
+  if (severity === "High") return "高";
+  if (severity === "Medium") return "中";
+  if (severity === "Low") return "低";
+  return severity;
+}
+
+function alarmStatusLabel(status: string): string {
+  if (status === "Active") return "待处理";
+  if (status === "Acknowledged") return "已确认";
+  if (status === "Resolved") return "已解决";
+  return status;
+}
+
 export default function AlarmsPanel() {
   const [selectedAlarmId, setSelectedAlarmId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -49,13 +64,13 @@ export default function AlarmsPanel() {
                     : "bg-emerald-50 text-emerald-600"
               }`}
             >
-              {selectedAlarm.status === "Active" ? "待处理" : selectedAlarm.status === "Acknowledged" ? "已确认" : "已解决"}
+              {alarmStatusLabel(selectedAlarm.status)}
             </span>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="rounded-xl bg-slate-50 p-3 text-sm">
               <p className="text-xs text-slate-500">告警级别</p>
-              <p className="mt-1 font-semibold text-slate-700">{selectedAlarm.severity}</p>
+              <p className="mt-1 font-semibold text-slate-700">{alarmSeverityLabel(selectedAlarm.severity)}</p>
             </div>
             <div className="rounded-xl bg-slate-50 p-3 text-sm">
               <p className="text-xs text-slate-500">触发时间</p>
@@ -110,7 +125,7 @@ export default function AlarmsPanel() {
                     {alarm.asset}
                   </div>
                 </td>
-                <td className="table-td text-sm text-slate-600">{alarm.severity}</td>
+                <td className="table-td text-sm text-slate-600">{alarmSeverityLabel(alarm.severity)}</td>
                 <td className="table-td">
                   <span className="inline-flex items-center gap-1 text-xs text-slate-500">
                     <Clock size={12} /> {alarm.time}
@@ -126,7 +141,7 @@ export default function AlarmsPanel() {
                           : "bg-emerald-50 text-emerald-600"
                     }`}
                   >
-                    {alarm.status === "Active" ? "待处理" : alarm.status === "Acknowledged" ? "已确认" : "已解决"}
+                    {alarmStatusLabel(alarm.status)}
                   </span>
                 </td>
                 <td className="table-td">

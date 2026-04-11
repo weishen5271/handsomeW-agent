@@ -9,11 +9,14 @@ import uvicorn
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from api.auth import router as auth_router
+from api.alarm_flow_routes import router as alarm_flow_router
 from api.digital_twin_routes import router as digital_twin_router
 from api.llm_config import router as llm_config_router
 from api.routes import router as agent_router
+from api.alarm_flow_store import init_alarm_flow_db
 from api.digital_twin_store import init_digital_twin_db
 from api.user_store import init_db
+from flow.scheduler import alarm_flow_scheduler
 
 app = FastAPI(title="handsomeW-agent API", version="0.1.0")
 
@@ -48,12 +51,15 @@ async def health() -> dict[str, str]:
 async def startup() -> None:
     init_db()
     init_digital_twin_db()
+    init_alarm_flow_db()
+    alarm_flow_scheduler.start()
 
 
 app.include_router(auth_router)
 app.include_router(llm_config_router)
 app.include_router(agent_router)
 app.include_router(digital_twin_router)
+app.include_router(alarm_flow_router)
 
 
 if __name__ == "__main__":

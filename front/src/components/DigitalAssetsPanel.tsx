@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Box, Cpu, Database, Loader2, Move, Pencil, Plus, Search, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeft, Box, Cpu, Database, Loader2, Move, Pencil, Plus, Search, Siren, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import AlarmFlowEditor from "./AlarmFlowEditor";
 import PaginationControls from "./PaginationControls";
 
 export type AssetStatus = "Normal" | "Warning" | "Critical";
@@ -467,6 +468,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
   const [isDetailEditing, setIsDetailEditing] = useState(false);
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState("");
+  const [showAlarmFlowEditor, setShowAlarmFlowEditor] = useState(false);
   const [knowledgeGraph, setKnowledgeGraph] = useState<KnowledgeGraphResponse | null>(null);
   const [selectedGraphType, setSelectedGraphType] = useState<string>("all");
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
@@ -871,9 +873,14 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                   </button>
                 </>
               ) : (
-                <button type="button" onClick={() => setIsDetailEditing(true)} className="btn-top-outline">
-                  编辑
-                </button>
+                <>
+                  <button type="button" onClick={() => setIsDetailEditing(true)} className="btn-top-outline">
+                    编辑
+                  </button>
+                  <button type="button" onClick={() => setShowAlarmFlowEditor(true)} className="btn-top-primary">
+                    <Siren size={14} /> 告警数据接入
+                  </button>
+                </>
               )}
               <button type="button" onClick={() => void removeAsset(detailAsset.id)} className="btn-top-danger">
                 删除资产
@@ -1513,6 +1520,15 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
             </div>
           </div>
         )}
+        {detailAsset && showAlarmFlowEditor ? (
+          <AlarmFlowEditor
+            assetId={detailAsset.id}
+            assetName={detailAsset.name}
+            apiBaseUrl={apiBaseUrl}
+            token={token}
+            onClose={() => setShowAlarmFlowEditor(false)}
+          />
+        ) : null}
       </div>
     );
   }

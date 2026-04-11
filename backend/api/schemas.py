@@ -309,6 +309,63 @@ class SceneSummaryListResponse(BaseModel):
     total: int = 0
 
 
+class AlarmFlowNodePosition(BaseModel):
+    x: float = 0
+    y: float = 0
+
+
+class AlarmFlowNode(BaseModel):
+    id: str = Field(..., min_length=1, max_length=128)
+    type: str = Field(..., min_length=1, max_length=64)
+    position: AlarmFlowNodePosition = Field(default_factory=AlarmFlowNodePosition)
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class AlarmFlowEdge(BaseModel):
+    source: str = Field(..., min_length=1, max_length=128)
+    target: str = Field(..., min_length=1, max_length=128)
+
+
+class AlarmFlowSaveRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    enabled: bool = False
+    schedule: str = Field(default="", max_length=100)
+    nodes: list[AlarmFlowNode] = Field(default_factory=list)
+    edges: list[AlarmFlowEdge] = Field(default_factory=list)
+
+
+class AlarmFlowResponse(AlarmFlowSaveRequest):
+    id: str
+    asset_id: str
+    status: Literal["running", "stopped", "error"] = "stopped"
+    created_at: datetime | str
+    updated_at: datetime | str
+
+
+class AlarmFlowDeployResponse(BaseModel):
+    status: str
+    message: str
+
+
+class AlarmFlowDeleteResponse(BaseModel):
+    status: str
+
+
+class AlarmFlowLogResponse(BaseModel):
+    node_id: str
+    timestamp: datetime | str
+    status: str
+    input_count: int
+    output_count: int
+    duration_ms: int
+    error: str | None = None
+    message: str | None = None
+
+
+class AlarmFlowLogListResponse(BaseModel):
+    logs: list[AlarmFlowLogResponse] = Field(default_factory=list)
+
+
 class SceneAssetsReplaceRequest(BaseModel):
     asset_ids: list[str] = Field(default_factory=list)
 

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Box, Cpu, Database, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Box, Cpu, Database, Loader2, Move, Pencil, Plus, Search, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import PaginationControls from "./PaginationControls";
 
 export type AssetStatus = "Normal" | "Warning" | "Critical";
@@ -57,6 +57,15 @@ type KnowledgeGraphResponse = {
   summary: Record<string, number>;
   nodes: KnowledgeGraphNode[];
   edges: KnowledgeGraphEdge[];
+};
+
+type GraphRegion = {
+  key: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 type DigitalAssetsPanelProps = {
@@ -283,69 +292,131 @@ function sortGroupedEntries<T>(entries: [string, T[]][]) {
 }
 
 function buildTypeGraphLayout(nodes: KnowledgeGraphNode[]) {
-  const width = 860;
-  const height = 420;
+  const width = 1040;
+  const height = 620;
   const center = nodes.find((node) => node.is_center) ?? nodes[0] ?? null;
   const related = nodes.filter((node) => !node.is_center);
   const positions: Record<string, { x: number; y: number }> = {};
+  const centerX = width / 2;
+  const centerY = height / 2;
 
   if (center) {
-    positions[center.id] = { x: width / 2, y: height / 2 };
+    positions[center.id] = { x: centerX, y: centerY };
   }
 
   if (related.length > 0) {
-    const ringRadius = related.length <= 4 ? 120 : related.length <= 8 ? 145 : 165;
-    related.forEach((node, index) => {
-      const angle = (-Math.PI / 2) + (Math.PI * 2 * index) / related.length;
-      positions[node.id] = {
-        x: width / 2 + ringRadius * Math.cos(angle),
-        y: height / 2 + ringRadius * Math.sin(angle),
-      };
-    });
+    const ringCapacities = [6, 10, 14, 18, 24];
+    const ringGap = 88;
+    const baseRadius = 150;
+    let cursor = 0;
+    let ringIndex = 0;
+
+    while (cursor < related.length) {
+      const count = ringCapacities[ringIndex] ?? Math.max(24, 24 + ringIndex * 6);
+      const ringNodes = related.slice(cursor, cursor + count);
+      const radius = baseRadius + ringIndex * ringGap;
+      ringNodes.forEach((node, index) => {
+        const angle = -Math.PI / 2 + (Math.PI * 2 * index) / ringNodes.length;
+        positions[node.id] = {
+          x: centerX + radius * Math.cos(angle),
+          y: centerY + radius * Math.sin(angle),
+        };
+      });
+      cursor += ringNodes.length;
+      ringIndex += 1;
+    }
   }
 
-  return { width, height, positions };
+  return { width, height, positions, regions: [] };
 }
 
 function buildAllTypesGraphLayout(nodes: KnowledgeGraphNode[]) {
-  const width = 860;
-  const height = 500;
+  const width = 1120;
   const center = nodes.find((node) => node.is_center) ?? nodes[0] ?? null;
   const related = nodes.filter((node) => !node.is_center);
   const positions: Record<string, { x: number; y: number }> = {};
-  const regions = [
-    { key: "ProductionLine", label: "产线", x: 36, y: 34, width: 190, height: 100 },
-    { key: "MaintenanceRecord", label: "维护记录", x: 36, y: 156, width: 190, height: 100 },
-    { key: "SparePart", label: "备件", x: 36, y: 278, width: 190, height: 100 },
-    { key: "Document", label: "文档", x: 36, y: 400, width: 190, height: 70 },
-    { key: "Sensor", label: "传感器", x: 634, y: 34, width: 190, height: 100 },
-    { key: "FaultMode", label: "故障模式", x: 634, y: 156, width: 190, height: 100 },
-    { key: "Alarm", label: "告警", x: 634, y: 278, width: 190, height: 100 },
-    { key: "Equipment", label: "关联设备", x: 634, y: 400, width: 190, height: 70 },
-    { key: "Entity", label: "其他实体", x: 335, y: 410, width: 190, height: 60 },
-  ];
+  const centerX = width / 2;
+  const leftX = 36;
+  const rightX = width - 296;
+  const regionWidth = 260;
+  const regionGap = 22;
+  const topStart = 36;
+  const defaultRegionOrder = [
+    ["ProductionLine", "产线", "left"],
+    ["MaintenanceRecord", "维护记录", "left"],
+    ["SparePart", "备件", "left"],
+    ["Document", "文档", "left"],
+    ["Sensor", "传感器", "right"],
+    ["FaultMode", "故障模式", "right"],
+    ["Alarm", "告警", "right"],
+    ["Equipment", "关联设备", "right"],
+    ["Entity", "其他实体", "bottom"],
+  ] as const;
+  const supportedRegionKeys = new Set<string>(defaultRegionOrder.map(([key]) => key));
 
   if (center) {
-    positions[center.id] = { x: width / 2, y: 210 };
+    positions[center.id] = { x: centerX, y: 270 };
   }
 
   const groups = new Map<string, KnowledgeGraphNode[]>();
   related.forEach((node) => {
     const type = normalizeNodeType(node.node_type);
-    const key = regions.some((region) => region.key === type) ? type : "Entity";
+    const key = supportedRegionKeys.has(type) ? type : "Entity";
     const list = groups.get(key) ?? [];
     list.push(node);
     groups.set(key, list);
   });
 
+  const buildRegionHeight = (count: number) => {
+    if (count <= 0) return 84;
+    const columns = count <= 2 ? count : count <= 6 ? 2 : 3;
+    const rows = Math.ceil(count / Math.max(columns, 1));
+    return Math.max(96, 52 + rows * 70);
+  };
+
+  const regions: GraphRegion[] = [];
+  let leftY = topStart;
+  let rightY = topStart;
+
+  defaultRegionOrder.forEach(([key, label, side]) => {
+    if (side === "bottom") return;
+    const count = groups.get(key)?.length ?? 0;
+    const region: GraphRegion = {
+      key,
+      label,
+      x: side === "left" ? leftX : rightX,
+      y: side === "left" ? leftY : rightY,
+      width: regionWidth,
+      height: buildRegionHeight(count),
+    };
+    regions.push(region);
+    if (side === "left") {
+      leftY += region.height + regionGap;
+    } else {
+      rightY += region.height + regionGap;
+    }
+  });
+
+  const sideHeight = Math.max(leftY, rightY);
+  const bottomRegion: GraphRegion = {
+    key: "Entity",
+    label: "其他实体",
+    x: centerX - 160,
+    y: sideHeight + 12,
+    width: 320,
+    height: buildRegionHeight(groups.get("Entity")?.length ?? 0),
+  };
+  regions.push(bottomRegion);
+  const height = bottomRegion.y + bottomRegion.height + 36;
+
   for (const region of regions) {
     const group = groups.get(region.key) ?? [];
     if (group.length === 0) continue;
-    const innerTop = region.y + 28;
-    const innerHeight = Math.max(region.height - 40, 24);
-    const innerWidth = Math.max(region.width - 24, 40);
+    const innerTop = region.y + 34;
+    const innerHeight = Math.max(region.height - 48, 24);
+    const innerWidth = Math.max(region.width - 28, 40);
     group.forEach((node, index) => {
-      const columns = group.length <= 2 ? group.length : group.length <= 4 ? 2 : 3;
+      const columns = group.length <= 2 ? group.length : group.length <= 6 ? 2 : 3;
       const rows = Math.ceil(group.length / columns);
       const col = columns === 1 ? 0 : index % columns;
       const row = columns === 1 ? index : Math.floor(index / columns);
@@ -359,6 +430,23 @@ function buildAllTypesGraphLayout(nodes: KnowledgeGraphNode[]) {
   }
 
   return { width, height, positions, regions };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function edgeKey(edge: KnowledgeGraphEdge, index: number) {
+  return `${edge.source}-${edge.target}-${edge.relation_type}-${index}`;
+}
+
+function detailLabel(key: string): string {
+  if (key === "type") return "类型";
+  if (key === "status") return "状态";
+  if (key === "location") return "位置";
+  if (key === "health") return "健康度";
+  if (key === "description") return "描述";
+  return key;
 }
 
 export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsPanelProps) {
@@ -381,6 +469,12 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
   const [graphError, setGraphError] = useState("");
   const [knowledgeGraph, setKnowledgeGraph] = useState<KnowledgeGraphResponse | null>(null);
   const [selectedGraphType, setSelectedGraphType] = useState<string>("all");
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
+  const [selectedGraphEdgeKey, setSelectedGraphEdgeKey] = useState<string | null>(null);
+  const [graphTransform, setGraphTransform] = useState({ scale: 1, x: 0, y: 0 });
+  const [isGraphPanning, setIsGraphPanning] = useState(false);
+  const graphPanStartRef = useRef<{ x: number; y: number; originX: number; originY: number } | null>(null);
+  const graphViewportRef = useRef<HTMLDivElement | null>(null);
 
   const detailAsset = useMemo(
     () => assets.find((asset) => asset.id === detailAssetId) ?? null,
@@ -456,6 +550,30 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
   }, [knowledgeGraph, nodeMap, selectedGraphType]);
   const filteredGraphLayout = useMemo(() => buildTypeGraphLayout(filteredGraphNodes), [filteredGraphNodes]);
   const allGraphLayout = useMemo(() => buildAllTypesGraphLayout(filteredGraphNodes), [filteredGraphNodes]);
+  const activeGraphLayout = selectedGraphType === "all" ? allGraphLayout : filteredGraphLayout;
+  const connectedNodeIds = useMemo(() => {
+    const ids = new Set<string>();
+    filteredGraphEdges.forEach((edge, index) => {
+      const key = edgeKey(edge, index);
+      if (selectedGraphEdgeKey === key) {
+        ids.add(edge.source);
+        ids.add(edge.target);
+      }
+      if (selectedGraphNodeId && (edge.source === selectedGraphNodeId || edge.target === selectedGraphNodeId)) {
+        ids.add(edge.source);
+        ids.add(edge.target);
+      }
+    });
+    return ids;
+  }, [filteredGraphEdges, selectedGraphEdgeKey, selectedGraphNodeId]);
+  const selectedGraphNode = useMemo(
+    () => filteredGraphNodes.find((node) => node.id === selectedGraphNodeId) ?? null,
+    [filteredGraphNodes, selectedGraphNodeId],
+  );
+  const selectedGraphEdge = useMemo(
+    () => filteredGraphEdges.find((edge, index) => edgeKey(edge, index) === selectedGraphEdgeKey) ?? null,
+    [filteredGraphEdges, selectedGraphEdgeKey],
+  );
 
   const fetchAssets = async (targetPage = page, targetPageSize = pageSize) => {
     setLoading(true);
@@ -522,6 +640,31 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
     }
   }, [graphTabTypes, selectedGraphType]);
 
+  useEffect(() => {
+    if (!knowledgeGraph) {
+      setSelectedGraphNodeId(null);
+      setSelectedGraphEdgeKey(null);
+      return;
+    }
+    const centerNode = knowledgeGraph.nodes.find((node) => node.is_center) ?? knowledgeGraph.nodes[0] ?? null;
+    setSelectedGraphNodeId(centerNode?.id ?? null);
+    setSelectedGraphEdgeKey(null);
+    setGraphTransform({ scale: 1, x: 0, y: 0 });
+  }, [knowledgeGraph]);
+
+  useEffect(() => {
+    if (selectedGraphNodeId && !filteredGraphNodeMap[selectedGraphNodeId]) {
+      const centerNode = filteredGraphNodes.find((node) => node.is_center) ?? filteredGraphNodes[0] ?? null;
+      setSelectedGraphNodeId(centerNode?.id ?? null);
+    }
+  }, [filteredGraphNodeMap, filteredGraphNodes, selectedGraphNodeId]);
+
+  useEffect(() => {
+    if (selectedGraphEdgeKey && !filteredGraphEdges.some((edge, index) => edgeKey(edge, index) === selectedGraphEdgeKey)) {
+      setSelectedGraphEdgeKey(null);
+    }
+  }, [filteredGraphEdges, selectedGraphEdgeKey]);
+
   const openCreate = () => {
     setCreateForm(emptyForm);
     setShowCreateModal(true);
@@ -541,6 +684,37 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
       modelFile: asset.modelFile,
     });
     void fetchAssetKnowledgeGraph(asset.id);
+  };
+
+  const zoomGraph = (direction: "in" | "out") => {
+    setGraphTransform((prev) => ({
+      ...prev,
+      scale: clamp(prev.scale + (direction === "in" ? 0.15 : -0.15), 0.6, 2.2),
+    }));
+  };
+
+  const resetGraphViewport = () => {
+    setGraphTransform({ scale: 1, x: 0, y: 0 });
+  };
+
+  const startGraphPan = (clientX: number, clientY: number) => {
+    graphPanStartRef.current = { x: clientX, y: clientY, originX: graphTransform.x, originY: graphTransform.y };
+    setIsGraphPanning(true);
+  };
+
+  const moveGraphPan = (clientX: number, clientY: number) => {
+    const pan = graphPanStartRef.current;
+    if (!pan) return;
+    setGraphTransform((prev) => ({
+      ...prev,
+      x: pan.originX + clientX - pan.x,
+      y: pan.originY + clientY - pan.y,
+    }));
+  };
+
+  const endGraphPan = () => {
+    graphPanStartRef.current = null;
+    setIsGraphPanning(false);
   };
 
   const validateForm = (form: AssetForm, requireId: boolean) => {
@@ -885,11 +1059,51 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                         })}
                       </div>
 
-                      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1">滚轮缩放</span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1">拖动画布平移</span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1">点击节点联动下方详情</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => zoomGraph("out")} className="btn-top-outline h-8 px-2">
+                            <ZoomOut size={14} />
+                          </button>
+                          <button type="button" onClick={resetGraphViewport} className="btn-top-outline h-8 gap-1 px-2">
+                            <Move size={14} /> 还原视图
+                          </button>
+                          <button type="button" onClick={() => zoomGraph("in")} className="btn-top-outline h-8 px-2">
+                            <ZoomIn size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div
+                        ref={graphViewportRef}
+                        className={`overflow-hidden rounded-2xl border border-slate-200 bg-white ${isGraphPanning ? "cursor-grabbing" : "cursor-grab"}`}
+                        onMouseDown={(event) => {
+                          if (event.button !== 0) return;
+                          startGraphPan(event.clientX, event.clientY);
+                        }}
+                        onMouseMove={(event) => {
+                          if (!isGraphPanning) return;
+                          moveGraphPan(event.clientX, event.clientY);
+                        }}
+                        onMouseUp={endGraphPan}
+                        onMouseLeave={endGraphPan}
+                        onWheel={(event) => {
+                          event.preventDefault();
+                          setGraphTransform((prev) => ({
+                            ...prev,
+                            scale: clamp(prev.scale + (event.deltaY < 0 ? 0.1 : -0.1), 0.6, 2.2),
+                          }));
+                        }}
+                      >
                         <svg
-                          viewBox={`0 0 ${selectedGraphType === "all" ? allGraphLayout.width : filteredGraphLayout.width} ${selectedGraphType === "all" ? allGraphLayout.height : filteredGraphLayout.height}`}
-                          className={`w-full ${selectedGraphType === "all" ? "h-[500px]" : "h-[420px]"}`}
+                          viewBox={`0 0 ${activeGraphLayout.width} ${activeGraphLayout.height}`}
+                          className={`w-full ${selectedGraphType === "all" ? "h-[560px]" : "h-[500px]"}`}
                         >
+                          <g transform={`translate(${graphTransform.x} ${graphTransform.y}) scale(${graphTransform.scale})`}>
                           {selectedGraphType === "all" &&
                             allGraphLayout.regions.map((region) => {
                               const style = typeStyle(region.key);
@@ -913,17 +1127,48 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                               );
                             })}
                           {filteredGraphEdges.map((edge, index) => {
-                            const source = (selectedGraphType === "all" ? allGraphLayout : filteredGraphLayout).positions[edge.source];
-                            const target = (selectedGraphType === "all" ? allGraphLayout : filteredGraphLayout).positions[edge.target];
+                            const currentKey = edgeKey(edge, index);
+                            const source = activeGraphLayout.positions[edge.source];
+                            const target = activeGraphLayout.positions[edge.target];
                             if (!source || !target) return null;
                             const sourceNode = filteredGraphNodeMap[edge.source];
                             const style = typeStyle(sourceNode?.node_type ?? "Entity", sourceNode?.is_center ?? false);
+                            const relatedToSelection =
+                              !selectedGraphNodeId && !selectedGraphEdgeKey
+                                ? true
+                                : selectedGraphEdgeKey === currentKey ||
+                                  (!!selectedGraphNodeId && (edge.source === selectedGraphNodeId || edge.target === selectedGraphNodeId));
                             const midX = (source.x + target.x) / 2;
                             const midY = (source.y + target.y) / 2;
                             return (
-                              <g key={`${edge.source}-${edge.target}-${edge.relation_type}-${index}`}>
-                              <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={style.line} strokeWidth="2" strokeOpacity="0.7" />
-                              <rect x={midX - 42} y={midY - 11} width={84} height={22} rx={11} fill="#FFFFFF" stroke={style.stroke} />
+                              <g
+                                key={currentKey}
+                                className="cursor-pointer"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedGraphEdgeKey(currentKey);
+                                  setSelectedGraphNodeId(null);
+                                }}
+                              >
+                              <line
+                                x1={source.x}
+                                y1={source.y}
+                                x2={target.x}
+                                y2={target.y}
+                                stroke={style.line}
+                                strokeWidth={selectedGraphEdgeKey === currentKey ? "3.5" : "2"}
+                                strokeOpacity={relatedToSelection ? "0.9" : "0.22"}
+                              />
+                              <rect
+                                x={midX - 42}
+                                y={midY - 11}
+                                width={84}
+                                height={22}
+                                rx={11}
+                                fill="#FFFFFF"
+                                stroke={selectedGraphEdgeKey === currentKey ? style.fill : style.stroke}
+                                opacity={relatedToSelection ? 1 : 0.45}
+                              />
                               <title>{`${filteredGraphNodeMap[edge.source]?.name ?? edge.source} ${relationDisplayName(edge.relation_type)} ${filteredGraphNodeMap[edge.target]?.name ?? edge.target}`}</title>
                               <text x={midX} y={midY + 4} textAnchor="middle" className="fill-slate-500 text-[10px]">
                                   {relationDisplayName(edge.relation_type)}
@@ -951,17 +1196,30 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                                   stroke={style.stroke}
                                   strokeWidth="1.2"
                                   strokeDasharray="4 4"
-                                  strokeOpacity="0.85"
+                                  strokeOpacity="0.7"
                                 />
                               );
                             })}
 
                           {filteredGraphNodes.map((node) => {
-                            const position = (selectedGraphType === "all" ? allGraphLayout : filteredGraphLayout).positions[node.id];
+                            const position = activeGraphLayout.positions[node.id];
                             if (!position) return null;
                             const style = typeStyle(node.node_type, node.is_center);
+                            const active = selectedGraphNodeId === node.id;
+                            const relatedToSelection =
+                              !selectedGraphNodeId && !selectedGraphEdgeKey
+                                ? true
+                                : active || connectedNodeIds.has(node.id);
                             return (
-                              <g key={node.id}>
+                              <g
+                                key={node.id}
+                                className="cursor-pointer"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedGraphNodeId(node.id);
+                                  setSelectedGraphEdgeKey(null);
+                                }}
+                              >
                                 <title>
                                   {[
                                     `${typeDisplayName(node.node_type)}: ${node.name}`,
@@ -972,8 +1230,22 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                                       .map(([key, value]) => `${key}: ${String(value)}`),
                                   ].join("\n")}
                                 </title>
-                                <circle cx={position.x} cy={position.y} r={node.is_center ? 40 : 28} fill={style.fill} />
-                                <circle cx={position.x} cy={position.y} r={node.is_center ? 45 : 33} fill="none" stroke={style.stroke} strokeWidth="2" />
+                                <circle
+                                  cx={position.x}
+                                  cy={position.y}
+                                  r={node.is_center ? 40 : 28}
+                                  fill={style.fill}
+                                  opacity={relatedToSelection ? 1 : 0.3}
+                                />
+                                <circle
+                                  cx={position.x}
+                                  cy={position.y}
+                                  r={active ? (node.is_center ? 50 : 38) : node.is_center ? 45 : 33}
+                                  fill="none"
+                                  stroke={active ? style.fill : style.stroke}
+                                  strokeWidth={active ? "3.5" : "2"}
+                                  opacity={relatedToSelection ? 1 : 0.35}
+                                />
                                 <text x={position.x} y={position.y - 2} textAnchor="middle" className="fill-white text-[12px] font-semibold">
                                   {(node.name ?? node.id).slice(0, node.is_center ? 10 : 8)}
                                 </text>
@@ -986,7 +1258,125 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                               </g>
                             );
                           })}
+                          </g>
                         </svg>
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                          <div className="mb-2 flex items-center justify-between">
+                            <h4 className="text-sm font-semibold text-slate-800">当前关注对象</h4>
+                            <span className="text-xs text-slate-500">
+                              {selectedGraphNode ? "节点" : selectedGraphEdge ? "关系" : "图谱总览"}
+                            </span>
+                          </div>
+                          {selectedGraphNode ? (
+                            <div className="space-y-3 text-sm text-slate-600">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`rounded-full px-2 py-1 text-[10px] font-medium ${typeStyle(selectedGraphNode.node_type, selectedGraphNode.is_center).badge}`}>
+                                  {typeDisplayName(selectedGraphNode.node_type)}
+                                </span>
+                                <span className="font-semibold text-slate-800">{selectedGraphNode.name}</span>
+                              </div>
+                              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 xl:grid-cols-3">
+                                <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                  <div className="text-xs text-slate-400">ID</div>
+                                  <div className="mt-1 break-all font-medium text-slate-700">{selectedGraphNode.id}</div>
+                                </div>
+                                <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                  <div className="text-xs text-slate-400">关联关系</div>
+                                  <div className="mt-1 font-medium text-slate-700">
+                                    {filteredGraphEdges.filter((edge) => edge.source === selectedGraphNode.id || edge.target === selectedGraphNode.id).length} 条
+                                  </div>
+                                </div>
+                                {Object.entries(selectedGraphNode.properties ?? {})
+                                  .filter(([key]) => !["name", "id", "nodeId"].includes(key))
+                                  .slice(0, 6)
+                                  .map(([key, value]) => (
+                                    <div key={key} className="rounded-xl bg-slate-50 px-3 py-2">
+                                      <div className="text-xs text-slate-400">{detailLabel(key)}</div>
+                                      <div className="mt-1 break-all font-medium text-slate-700">{String(value)}</div>
+                                    </div>
+                                  ))}
+                              </div>
+                              {connectedNodeIds.size > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {Array.from(connectedNodeIds)
+                                    .filter((nodeId) => nodeId !== selectedGraphNode.id)
+                                    .slice(0, 8)
+                                    .map((nodeId) => {
+                                      const node = filteredGraphNodeMap[nodeId];
+                                      if (!node) return null;
+                                      return (
+                                        <button
+                                          key={nodeId}
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedGraphNodeId(nodeId);
+                                            setSelectedGraphEdgeKey(null);
+                                          }}
+                                          className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                        >
+                                          {node.name}
+                                        </button>
+                                      );
+                                    })}
+                                </div>
+                              )}
+                            </div>
+                          ) : selectedGraphEdge ? (
+                            <div className="space-y-3 text-sm text-slate-600">
+                              <div className="font-semibold text-slate-800">
+                                {(nodeMap[selectedGraphEdge.source]?.name ?? selectedGraphEdge.source)} {relationDisplayName(selectedGraphEdge.relation_type)} {(nodeMap[selectedGraphEdge.target]?.name ?? selectedGraphEdge.target)}
+                              </div>
+                              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 xl:grid-cols-3">
+                                <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                  <div className="text-xs text-slate-400">起点</div>
+                                  <div className="mt-1 font-medium text-slate-700">{nodeMap[selectedGraphEdge.source]?.name ?? selectedGraphEdge.source}</div>
+                                </div>
+                                <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                  <div className="text-xs text-slate-400">关系类型</div>
+                                  <div className="mt-1 font-medium text-slate-700">{relationDisplayName(selectedGraphEdge.relation_type)}</div>
+                                </div>
+                                <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                  <div className="text-xs text-slate-400">终点</div>
+                                  <div className="mt-1 font-medium text-slate-700">{nodeMap[selectedGraphEdge.target]?.name ?? selectedGraphEdge.target}</div>
+                                </div>
+                                {Object.keys(selectedGraphEdge.properties ?? {}).length > 0 ? (
+                                  Object.entries(selectedGraphEdge.properties ?? {})
+                                    .slice(0, 6)
+                                    .map(([key, value]) => (
+                                      <div key={key} className="rounded-xl bg-slate-50 px-3 py-2">
+                                        <div className="text-xs text-slate-400">{detailLabel(key)}</div>
+                                        <div className="mt-1 break-all font-medium text-slate-700">{String(value)}</div>
+                                      </div>
+                                    ))
+                                ) : (
+                                  <div className="rounded-xl bg-slate-50 px-3 py-2 text-slate-500">当前关系暂无附加属性。</div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 gap-2 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+                              <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                <div className="text-xs text-slate-400">中心设备</div>
+                                <div className="mt-1 font-medium text-slate-700">{knowledgeGraph.asset_name}</div>
+                              </div>
+                              <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                <div className="text-xs text-slate-400">可视节点</div>
+                                <div className="mt-1 font-medium text-slate-700">{filteredGraphNodes.length} 个</div>
+                              </div>
+                              <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                <div className="text-xs text-slate-400">可视关系</div>
+                                <div className="mt-1 font-medium text-slate-700">{filteredGraphEdges.length} 条</div>
+                              </div>
+                              <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                <div className="text-xs text-slate-400">操作提示</div>
+                                <div className="mt-1 font-medium text-slate-700">点击节点或关系查看上下文</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </>
@@ -1015,7 +1405,14 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                           </div>
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             {nodes.map((node) => (
-                              <div key={node.id} className="rounded-xl border border-white/70 bg-white/80 p-4 shadow-sm">
+                              <div
+                                key={node.id}
+                                className={`rounded-xl border border-white/70 bg-white/80 p-4 shadow-sm transition ${selectedGraphNodeId === node.id ? "ring-2 ring-blue-300" : ""}`}
+                                onClick={() => {
+                                  setSelectedGraphNodeId(node.id);
+                                  setSelectedGraphEdgeKey(null);
+                                }}
+                              >
                                 <div className="mb-2 flex items-center justify-between gap-2">
                                   <div className="text-sm font-semibold text-slate-800">{node.name}</div>
                                   <span className={`rounded-full px-2 py-1 text-[10px] font-medium ${style.badge}`}>
@@ -1069,13 +1466,18 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                               const target = nodeMap[edge.target];
                               const sourceStyle = typeStyle(source?.node_type ?? "Entity", source?.is_center ?? false);
                               const targetStyle = typeStyle(target?.node_type ?? "Entity", target?.is_center ?? false);
+                              const currentKey = edgeKey(edge, index);
                               return (
                                 <div
-                                  key={`${edge.source}-${edge.target}-${edge.relation_type}-${index}`}
-                                  className="rounded-xl border p-3"
+                                  key={currentKey}
+                                  className={`rounded-xl border p-3 transition ${selectedGraphEdgeKey === currentKey ? "ring-2 ring-blue-300" : ""}`}
                                   style={{
                                     borderColor: sourceStyle.stroke,
                                     background: `linear-gradient(90deg, ${sourceStyle.regionFill} 0%, ${targetStyle.regionFill} 100%)`,
+                                  }}
+                                  onClick={() => {
+                                    setSelectedGraphEdgeKey(currentKey);
+                                    setSelectedGraphNodeId(null);
                                   }}
                                 >
                                   <div className="flex flex-wrap items-center gap-2 text-sm">

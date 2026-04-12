@@ -7,11 +7,13 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  Moon,
   Package,
   Settings,
   Shield,
   ShieldAlert,
   Sparkles,
+  Sun,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
@@ -128,6 +130,26 @@ export default function App() {
     setUiState,
     clearAuthSession: resetAppState,
   } = useAppStore();
+
+  const toggleTheme = () => {
+    const next = ui.theme === "light" ? "dark" : "light";
+    setUiState({ theme: next });
+    localStorage.setItem("theme", next);
+    if (next === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  };
+
+  // Apply theme on mount
+  useEffect(() => {
+    if (ui.theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [ui.theme]);
 
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [authUsername, setAuthUsername] = useState("");
@@ -679,16 +701,16 @@ export default function App() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-3 py-4 text-[16px] font-medium text-slate-900 lg:px-5 lg:py-6">
-      <div className="mx-auto flex h-[calc(100vh-2rem)] w-full max-w-[1600px] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft lg:h-[calc(100vh-3rem)]">
-        <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
+    <main className="min-h-screen bg-[var(--color-surface-raised)] px-3 py-4 text-[16px] font-medium text-[var(--color-text)] lg:px-5 lg:py-6">
+      <div className="card mx-auto flex h-[calc(100vh-2rem)] w-full max-w-[1600px] overflow-hidden lg:h-[calc(100vh-3rem)]">
+        <aside className="flex w-64 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]">
           <div className="flex items-center gap-3 p-6">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white shadow-md" style={{ boxShadow: '0 4px 12px rgba(27, 97, 201, 0.3)' }}>
               <Sparkles size={18} />
             </span>
             <div>
-              <h1 className="font-title text-xl font-bold tracking-tight text-slate-800">TwinMind</h1>
-              <p className="text-[11px] font-bold tracking-widest text-slate-400">RCA Assistant</p>
+              <h1 className="font-display text-xl font-bold tracking-tight text-[var(--color-text)]">TwinMind</h1>
+              <p className="text-[11px] font-medium tracking-widest text-[var(--color-text-weak)]">RCA Assistant</p>
             </div>
           </div>
 
@@ -700,7 +722,9 @@ export default function App() {
                 <button
                   key={item.path}
                   className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-colors ${
-                    active ? "bg-blue-50 font-semibold text-blue-600" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                    active
+                      ? "bg-[rgba(27,97,201,0.1)] font-semibold text-primary"
+                      : "text-[var(--color-text-weak)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
                   }`}
                   type="button"
                   onClick={() => navigate(item.path)}
@@ -713,33 +737,43 @@ export default function App() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <h2 className="font-title text-lg font-bold text-slate-800">{resolveTitle(location.pathname, isAdmin)}</h2>
-            <div className="relative" ref={userMenuRef}>
+          <header className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
+            <h2 className="font-display text-lg font-bold text-[var(--color-text)]">{resolveTitle(location.pathname, isAdmin)}</h2>
+            <div className="flex items-center gap-3">
               <button
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-100"
+                className="inline-flex items-center justify-center rounded-lg p-2 text-[var(--color-text-weak)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
                 type="button"
-                onClick={() => setUiState({ userMenuOpen: !ui.userMenuOpen })}
+                onClick={toggleTheme}
+                title={ui.theme === "light" ? "切换到深色模式" : "切换到浅色模式"}
               >
-                <Shield size={14} />
-                {auth.currentUser.username} ({auth.currentUser.role})
-                <ChevronDown size={14} className={`transition-transform ${ui.userMenuOpen ? "rotate-180" : ""}`} />
+                {ui.theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
               </button>
-              {ui.userMenuOpen && (
-                <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
-                  <button
-                    className="inline-flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100"
-                    type="button"
-                    onClick={() => {
-                      setUiState({ userMenuOpen: false });
-                      void logout();
-                    }}
-                  >
-                    <LogOut size={14} />
-                    退出登录
-                  </button>
-                </div>
-              )}
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  className="btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+                  type="button"
+                  onClick={() => setUiState({ userMenuOpen: !ui.userMenuOpen })}
+                >
+                  <Shield size={14} />
+                  {auth.currentUser.username} ({auth.currentUser.role})
+                  <ChevronDown size={14} className={`transition-transform ${ui.userMenuOpen ? "rotate-180" : ""}`} />
+                </button>
+                {ui.userMenuOpen && (
+                  <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
+                    <button
+                      className="btn-secondary inline-flex w-full items-center gap-2 px-3 py-2 text-sm"
+                      type="button"
+                      onClick={() => {
+                        setUiState({ userMenuOpen: false });
+                        void logout();
+                      }}
+                    >
+                      <LogOut size={14} />
+                      退出登录
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </header>
 

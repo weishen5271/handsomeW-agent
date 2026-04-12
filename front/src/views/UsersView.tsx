@@ -54,12 +54,12 @@ export default function UsersView({
   };
 
   return (
-    <section className="flex-1 overflow-y-auto bg-slate-50/30 p-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="flex-1 overflow-y-auto bg-[var(--color-surface-raised)] p-6">
+      <div className="card rounded-2xl p-5">
         <div className="mb-3 flex items-center justify-end gap-3">
           <button
             type="button"
-            className="btn-top-primary"
+            className="btn-primary"
             onClick={() => {
               onClearError();
               setCreateUserModalOpen(true);
@@ -70,41 +70,41 @@ export default function UsersView({
         </div>
         {usersError && <p className="mb-3 text-sm text-red-500">{usersError}</p>}
         {usersLoading ? (
-          <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-50 px-3 py-2 text-slate-600">
-            <Loader2 size={14} className="animate-spin text-blue-600" />
+          <div className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[rgba(27,97,201,0.1)] px-3 py-2 text-[var(--color-text-weak)]">
+            <Loader2 size={14} className="animate-spin text-primary" />
             <span>加载中...</span>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-200">
+          <div className="card overflow-hidden">
             <table className="w-full border-collapse text-left">
               <thead>
-                <tr className="bg-slate-50">
-                  <th className="table-th">用户名</th>
-                  <th className="table-th">角色</th>
-                  <th className="table-th">创建时间</th>
-                  <th className="table-th">操作</th>
+                <tr className="bg-[var(--color-surface-raised)]">
+                  <th className="table-header">用户名</th>
+                  <th className="table-header">角色</th>
+                  <th className="table-header">创建时间</th>
+                  <th className="table-header">操作</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[var(--color-border)]">
                 {users.map((user) => {
                   const isSelf = currentUser.id === user.id;
                   return (
-                    <tr key={user.id} className="hover:bg-slate-50/60">
-                      <td className="table-td text-sm text-slate-700">{user.username}</td>
-                      <td className="table-td text-sm text-slate-500">{user.role}</td>
-                      <td className="table-td text-sm text-slate-500">{new Date(user.created_at).toLocaleDateString()}</td>
-                      <td className="table-td">
+                    <tr key={user.id} className="hover:bg-[var(--color-surface-raised)]">
+                      <td className="table-cell text-sm text-[var(--color-text)]">{user.username}</td>
+                      <td className="table-cell text-sm text-[var(--color-text-weak)]">{user.role}</td>
+                      <td className="table-cell text-sm text-[var(--color-text-weak)]">{new Date(user.created_at).toLocaleDateString()}</td>
+                      <td className="table-cell">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             type="button"
-                            className="inline-flex h-8 items-center justify-center rounded-md border border-slate-200 px-2 text-xs text-slate-600 transition hover:bg-slate-50 hover:text-slate-800"
+                            className="btn-secondary rounded-md px-2 py-1 text-xs"
                             onClick={() => openEditModal(user)}
                           >
                             编辑
                           </button>
                           <button
                             type="button"
-                            className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-red-200 px-2 text-xs text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="btn-danger rounded-md px-2 py-1 text-xs"
                             onClick={() => void onRemoveUser(user.id)}
                             disabled={isSelf}
                           >
@@ -132,13 +132,13 @@ export default function UsersView({
       </div>
 
       {createUserModalOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/35 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(0,0,0,0.4)] p-4">
+          <div className="card w-full max-w-md p-5">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-title text-lg font-bold text-slate-800">新增用户</h3>
+              <h3 className="font-display text-lg font-bold text-[var(--color-text)]">新增用户</h3>
               <button
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                className="btn-secondary inline-flex h-8 w-8 items-center justify-center"
                 onClick={() => setCreateUserModalOpen(false)}
               >
                 <X size={16} />
@@ -146,20 +146,20 @@ export default function UsersView({
             </div>
             <div className="space-y-3">
               <input
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                className="input"
                 placeholder="用户名"
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
               />
               <input
                 type="password"
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                className="input"
                 placeholder="初始密码"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
               />
               <select
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                className="input"
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value as UserRole)}
               >
@@ -170,14 +170,14 @@ export default function UsersView({
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 px-3 text-sm text-slate-600 transition hover:bg-slate-50"
+                className="btn-secondary"
                 onClick={() => setCreateUserModalOpen(false)}
               >
                 取消
               </button>
               <button
                 type="button"
-                className="inline-flex h-9 items-center justify-center rounded-lg bg-blue-600 px-3 text-sm text-white transition hover:bg-blue-700"
+                className="btn-primary"
                 onClick={() => {
                   void onCreateUser({ username: newUsername, password: newPassword, role: newRole });
                   setNewUsername("");
@@ -194,13 +194,13 @@ export default function UsersView({
       )}
 
       {editUserModalOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/35 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(0,0,0,0.4)] p-4">
+          <div className="card w-full max-w-md p-5">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-title text-lg font-bold text-slate-800">编辑用户</h3>
+              <h3 className="font-display text-lg font-bold text-[var(--color-text)]">编辑用户</h3>
               <button
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                className="btn-secondary inline-flex h-8 w-8 items-center justify-center"
                 onClick={() => setEditUserModalOpen(false)}
               >
                 <X size={16} />
@@ -208,20 +208,20 @@ export default function UsersView({
             </div>
             <div className="space-y-3">
               <input
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                className="input"
                 placeholder="用户名"
                 value={editUsername}
                 onChange={(e) => setEditUsername(e.target.value)}
               />
               <input
                 type="password"
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                className="input"
                 placeholder="留空表示不修改密码"
                 value={editPassword}
                 onChange={(e) => setEditPassword(e.target.value)}
               />
               <select
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                className="input"
                 value={editRole}
                 onChange={(e) => setEditRole(e.target.value as UserRole)}
               >
@@ -232,14 +232,14 @@ export default function UsersView({
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 px-3 text-sm text-slate-600 transition hover:bg-slate-50"
+                className="btn-secondary"
                 onClick={() => setEditUserModalOpen(false)}
               >
                 取消
               </button>
               <button
                 type="button"
-                className="inline-flex h-9 items-center justify-center rounded-lg bg-blue-600 px-3 text-sm text-white transition hover:bg-blue-700"
+                className="btn-primary"
                 disabled={editingUserId === null}
                 onClick={() => {
                   if (editingUserId === null) return;

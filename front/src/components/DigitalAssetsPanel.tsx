@@ -251,10 +251,10 @@ function typeStyle(type: string, isCenter = false) {
     return {
       fill: "#64748B",
       stroke: "#CBD5E1",
-      badge: "bg-slate-100 text-slate-700",
-      card: "border-slate-200 bg-slate-50",
+      badge: "bg-[var(--color-surface-raised)] text-[var(--color-text)]",
+      card: "border-[var(--color-border)] bg-[var(--color-surface-raised)]",
       line: "#94A3B8",
-      text: "text-slate-700",
+      text: "text-[var(--color-text)]",
       regionFill: "#F8FAFC",
       regionStroke: "#CBD5E1",
     };
@@ -829,7 +829,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
 
   if (detailAssetId) {
     return (
-      <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
+      <div className="h-full overflow-y-auto bg-[var(--color-surface-raised)]/30 p-6 md:p-8">
         <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <button
             type="button"
@@ -838,18 +838,18 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
               setKnowledgeGraph(null);
               setGraphError("");
             }}
-            className="inline-flex items-center gap-1 text-sm text-slate-500 transition hover:text-slate-700"
+            className="inline-flex items-center gap-1 text-sm text-[var(--color-text-weak)] transition hover:text-[var(--color-text)]"
           >
             <ArrowLeft size={14} /> 返回数字资产库
           </button>
           {detailAsset && (
-            <span className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-mono text-slate-600">{detailAsset.id}</span>
+            <span className="rounded-lg bg-[var(--color-surface-raised)] px-3 py-1 text-xs font-mono text-slate-600">{detailAsset.id}</span>
           )}
           {detailAsset && (
             <div className="flex items-center gap-2">
               {isDetailEditing ? (
                 <>
-                  <button type="button" onClick={() => void saveDetailAsset()} disabled={detailSaving} className="btn-top-primary">
+                  <button type="button" onClick={() => void saveDetailAsset()} disabled={detailSaving} className="btn-primary">
                     {detailSaving ? <Loader2 size={14} className="animate-spin" /> : "保存"}
                   </button>
                   <button
@@ -867,22 +867,22 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                       });
                       setIsDetailEditing(false);
                     }}
-                    className="btn-top-outline"
+                    className="btn-secondary"
                   >
                     取消
                   </button>
                 </>
               ) : (
                 <>
-                  <button type="button" onClick={() => setIsDetailEditing(true)} className="btn-top-outline">
+                  <button type="button" onClick={() => setIsDetailEditing(true)} className="btn-secondary">
                     编辑
                   </button>
-                  <button type="button" onClick={() => setShowAlarmFlowEditor(true)} className="btn-top-primary">
+                  <button type="button" onClick={() => setShowAlarmFlowEditor(true)} className="btn-primary">
                     <Siren size={14} /> 告警数据接入
                   </button>
                 </>
               )}
-              <button type="button" onClick={() => void removeAsset(detailAsset.id)} className="btn-top-danger">
+              <button type="button" onClick={() => void removeAsset(detailAsset.id)} className="btn-danger">
                 删除资产
               </button>
             </div>
@@ -892,14 +892,14 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
         {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
 
         {!detailAsset ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">资产不存在或已被删除。</div>
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 text-sm text-[var(--color-text-weak)] shadow-sm">资产不存在或已被删除。</div>
         ) : (
           <div className="space-y-5">
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-800">设备基础信息</h3>
-                    <p className="text-sm text-slate-500">列表页展示设备数据，详情页可继续编辑。</p>
+                    <h3 className="text-lg font-bold text-[var(--color-text)]">设备基础信息</h3>
+                    <p className="text-sm text-[var(--color-text-weak)]">列表页展示设备数据，详情页可继续编辑。</p>
                   </div>
                   <span
                     className={`rounded-lg px-2 py-1 text-[10px] font-bold uppercase ${
@@ -915,66 +915,66 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                 </div>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <label className="space-y-1">
-                    <span className="text-sm text-slate-500">资产 ID</span>
+                    <span className="text-sm text-[var(--color-text-weak)]">资产 ID</span>
                     <input
                       disabled
-                      className="h-10 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-slate-500 outline-none"
+                      className="h-10 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3 text-[var(--color-text-weak)] outline-none"
                       value={detailForm.id}
                     />
                   </label>
                   <label className="space-y-1">
-                    <span className="text-sm text-slate-500">资产名称</span>
+                    <span className="text-sm text-[var(--color-text-weak)]">资产名称</span>
                     <input
                       disabled={!isDetailEditing}
-                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                      className="h-10 w-full rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                       value={detailForm.name}
                       onChange={(e) => setDetailForm((prev) => ({ ...prev, name: e.target.value }))}
                     />
                   </label>
                   <label className="space-y-1">
-                    <span className="text-sm text-slate-500">资产类型</span>
+                    <span className="text-sm text-[var(--color-text-weak)]">资产类型</span>
                     <input
                       disabled={!isDetailEditing}
-                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                      className="h-10 w-full rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                       value={detailForm.type}
                       onChange={(e) => setDetailForm((prev) => ({ ...prev, type: e.target.value }))}
                     />
                   </label>
                   <label className="space-y-1">
-                    <span className="text-sm text-slate-500">部署位置</span>
+                    <span className="text-sm text-[var(--color-text-weak)]">部署位置</span>
                     <input
                       disabled={!isDetailEditing}
-                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                      className="h-10 w-full rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                       value={detailForm.location}
                       onChange={(e) => setDetailForm((prev) => ({ ...prev, location: e.target.value }))}
                     />
                   </label>
                   <label className="space-y-1">
-                    <span className="text-sm text-slate-500">模型文件</span>
+                    <span className="text-sm text-[var(--color-text-weak)]">模型文件</span>
                     <input
                       disabled={!isDetailEditing}
-                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                      className="h-10 w-full rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                       value={detailForm.modelFile}
                       onChange={(e) => setDetailForm((prev) => ({ ...prev, modelFile: e.target.value }))}
                     />
                   </label>
                   <label className="space-y-1">
-                    <span className="text-sm text-slate-500">健康度 (0-100)</span>
+                    <span className="text-sm text-[var(--color-text-weak)]">健康度 (0-100)</span>
                     <input
                       disabled={!isDetailEditing}
                       type="number"
                       min={0}
                       max={100}
-                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                      className="h-10 w-full rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                       value={detailForm.health}
                       onChange={(e) => setDetailForm((prev) => ({ ...prev, health: Number(e.target.value) }))}
                     />
                   </label>
                   <label className="space-y-1 md:col-span-2">
-                    <span className="text-sm text-slate-500">状态</span>
+                    <span className="text-sm text-[var(--color-text-weak)]">状态</span>
                     <select
                       disabled={!isDetailEditing}
-                      className="h-10 w-full rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                      className="h-10 w-full rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                       value={detailForm.status}
                       onChange={(e) => setDetailForm((prev) => ({ ...prev, status: e.target.value as AssetStatus }))}
                     >
@@ -986,16 +986,16 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                 </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-800">关联知识图谱</h3>
-                    <p className="text-sm text-slate-500">展示该设备关联的产线、传感器、故障、告警、文档等知识图谱数据。</p>
+                    <h3 className="text-lg font-bold text-[var(--color-text)]">关联知识图谱</h3>
+                    <p className="text-sm text-[var(--color-text-weak)]">展示该设备关联的产线、传感器、故障、告警、文档等知识图谱数据。</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => detailAssetId && void fetchAssetKnowledgeGraph(detailAssetId)}
-                    className="btn-top-outline"
+                    className="btn-secondary"
                   >
                     刷新图谱
                   </button>
@@ -1004,20 +1004,20 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                 {graphError && <p className="mb-3 text-sm text-red-500">{graphError}</p>}
 
                 {graphLoading ? (
-                  <div className="flex h-[360px] items-center justify-center text-sm text-slate-500">
+                  <div className="flex h-[360px] items-center justify-center text-sm text-[var(--color-text-weak)]">
                     <span className="inline-flex items-center gap-2">
                       <Loader2 size={14} className="animate-spin text-blue-600" /> 图谱加载中...
                     </span>
                   </div>
                 ) : !knowledgeGraph || knowledgeGraph.nodes.length === 0 ? (
-                  <div className="flex h-[360px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
+                  <div className="flex h-[360px] items-center justify-center rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-raised)] text-sm text-[var(--color-text-weak)]">
                     暂无可展示的知识图谱数据
                   </div>
                 ) : (
                   <>
                     <div className="mb-4 flex flex-wrap gap-2">
                       {Object.entries(knowledgeGraph.summary).map(([key, value]) => (
-                        <span key={key} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+                        <span key={key} className="rounded-full bg-[var(--color-surface-raised)] px-3 py-1 text-xs text-slate-600">
                           {summaryDisplayName(key)}: {value}
                         </span>
                       ))}
@@ -1036,7 +1036,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                         );
                       })}
                     </div>
-                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                    <div className="rounded-2xl border border-slate-100 bg-[var(--color-surface-raised)] p-4">
                       <div className="mb-4 flex flex-wrap gap-2">
                         <button
                           type="button"
@@ -1044,7 +1044,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                           className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                             selectedGraphType === "all"
                               ? "border-blue-200 bg-blue-50 text-blue-700"
-                              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                              : "border-[var(--color-border)] bg-[var(--color-surface)] text-slate-600 hover:border-slate-300"
                           }`}
                         >
                           全部 ({knowledgeGraph.nodes.filter((node) => !node.is_center).length})
@@ -1057,7 +1057,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                               key={type}
                               type="button"
                               onClick={() => setSelectedGraphType(type)}
-                              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${active ? style.badge : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${active ? style.badge : "border-[var(--color-border)] bg-[var(--color-surface)] text-slate-600 hover:border-slate-300"}`}
                               style={active ? { borderColor: style.stroke } : undefined}
                             >
                               {label} ({count})
@@ -1066,11 +1066,11 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                         })}
                       </div>
 
-                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1">滚轮缩放</span>
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1">拖动画布平移</span>
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1">点击节点联动下方详情</span>
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-weak)]">
+                          <span className="rounded-full bg-[var(--color-surface-raised)] px-2.5 py-1">滚轮缩放</span>
+                          <span className="rounded-full bg-[var(--color-surface-raised)] px-2.5 py-1">拖动画布平移</span>
+                          <span className="rounded-full bg-[var(--color-surface-raised)] px-2.5 py-1">点击节点联动下方详情</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <button type="button" onClick={() => zoomGraph("out")} className="btn-top-outline h-8 px-2">
@@ -1087,7 +1087,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
 
                       <div
                         ref={graphViewportRef}
-                        className={`overflow-hidden rounded-2xl border border-slate-200 bg-white ${isGraphPanning ? "cursor-grabbing" : "cursor-grab"}`}
+                        className={`overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] ${isGraphPanning ? "cursor-grabbing" : "cursor-grab"}`}
                         onMouseDown={(event) => {
                           if (event.button !== 0) return;
                           startGraphPan(event.clientX, event.clientY);
@@ -1270,10 +1270,10 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                       </div>
 
                       <div className="mt-4">
-                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
                           <div className="mb-2 flex items-center justify-between">
-                            <h4 className="text-sm font-semibold text-slate-800">当前关注对象</h4>
-                            <span className="text-xs text-slate-500">
+                            <h4 className="text-sm font-semibold text-[var(--color-text)]">当前关注对象</h4>
+                            <span className="text-xs text-[var(--color-text-weak)]">
                               {selectedGraphNode ? "节点" : selectedGraphEdge ? "关系" : "图谱总览"}
                             </span>
                           </div>
@@ -1283,16 +1283,16 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                                 <span className={`rounded-full px-2 py-1 text-[10px] font-medium ${typeStyle(selectedGraphNode.node_type, selectedGraphNode.is_center).badge}`}>
                                   {typeDisplayName(selectedGraphNode.node_type)}
                                 </span>
-                                <span className="font-semibold text-slate-800">{selectedGraphNode.name}</span>
+                                <span className="font-semibold text-[var(--color-text)]">{selectedGraphNode.name}</span>
                               </div>
                               <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 xl:grid-cols-3">
-                                <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                <div className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2">
                                   <div className="text-xs text-slate-400">ID</div>
-                                  <div className="mt-1 break-all font-medium text-slate-700">{selectedGraphNode.id}</div>
+                                  <div className="mt-1 break-all font-medium text-[var(--color-text)]">{selectedGraphNode.id}</div>
                                 </div>
-                                <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                <div className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2">
                                   <div className="text-xs text-slate-400">关联关系</div>
-                                  <div className="mt-1 font-medium text-slate-700">
+                                  <div className="mt-1 font-medium text-[var(--color-text)]">
                                     {filteredGraphEdges.filter((edge) => edge.source === selectedGraphNode.id || edge.target === selectedGraphNode.id).length} 条
                                   </div>
                                 </div>
@@ -1300,9 +1300,9 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                                   .filter(([key]) => !["name", "id", "nodeId"].includes(key))
                                   .slice(0, 6)
                                   .map(([key, value]) => (
-                                    <div key={key} className="rounded-xl bg-slate-50 px-3 py-2">
+                                    <div key={key} className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2">
                                       <div className="text-xs text-slate-400">{detailLabel(key)}</div>
-                                      <div className="mt-1 break-all font-medium text-slate-700">{String(value)}</div>
+                                      <div className="mt-1 break-all font-medium text-[var(--color-text)]">{String(value)}</div>
                                     </div>
                                   ))}
                               </div>
@@ -1322,7 +1322,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                                             setSelectedGraphNodeId(nodeId);
                                             setSelectedGraphEdgeKey(null);
                                           }}
-                                          className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                          className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3 py-1 text-xs text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                                         >
                                           {node.name}
                                         </button>
@@ -1333,53 +1333,53 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                             </div>
                           ) : selectedGraphEdge ? (
                             <div className="space-y-3 text-sm text-slate-600">
-                              <div className="font-semibold text-slate-800">
+                              <div className="font-semibold text-[var(--color-text)]">
                                 {(nodeMap[selectedGraphEdge.source]?.name ?? selectedGraphEdge.source)} {relationDisplayName(selectedGraphEdge.relation_type)} {(nodeMap[selectedGraphEdge.target]?.name ?? selectedGraphEdge.target)}
                               </div>
                               <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 xl:grid-cols-3">
-                                <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                <div className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2">
                                   <div className="text-xs text-slate-400">起点</div>
-                                  <div className="mt-1 font-medium text-slate-700">{nodeMap[selectedGraphEdge.source]?.name ?? selectedGraphEdge.source}</div>
+                                  <div className="mt-1 font-medium text-[var(--color-text)]">{nodeMap[selectedGraphEdge.source]?.name ?? selectedGraphEdge.source}</div>
                                 </div>
-                                <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                <div className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2">
                                   <div className="text-xs text-slate-400">关系类型</div>
-                                  <div className="mt-1 font-medium text-slate-700">{relationDisplayName(selectedGraphEdge.relation_type)}</div>
+                                  <div className="mt-1 font-medium text-[var(--color-text)]">{relationDisplayName(selectedGraphEdge.relation_type)}</div>
                                 </div>
-                                <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                <div className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2">
                                   <div className="text-xs text-slate-400">终点</div>
-                                  <div className="mt-1 font-medium text-slate-700">{nodeMap[selectedGraphEdge.target]?.name ?? selectedGraphEdge.target}</div>
+                                  <div className="mt-1 font-medium text-[var(--color-text)]">{nodeMap[selectedGraphEdge.target]?.name ?? selectedGraphEdge.target}</div>
                                 </div>
                                 {Object.keys(selectedGraphEdge.properties ?? {}).length > 0 ? (
                                   Object.entries(selectedGraphEdge.properties ?? {})
                                     .slice(0, 6)
                                     .map(([key, value]) => (
-                                      <div key={key} className="rounded-xl bg-slate-50 px-3 py-2">
+                                      <div key={key} className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2">
                                         <div className="text-xs text-slate-400">{detailLabel(key)}</div>
-                                        <div className="mt-1 break-all font-medium text-slate-700">{String(value)}</div>
+                                        <div className="mt-1 break-all font-medium text-[var(--color-text)]">{String(value)}</div>
                                       </div>
                                     ))
                                 ) : (
-                                  <div className="rounded-xl bg-slate-50 px-3 py-2 text-slate-500">当前关系暂无附加属性。</div>
+                                  <div className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2 text-[var(--color-text-weak)]">当前关系暂无附加属性。</div>
                                 )}
                               </div>
                             </div>
                           ) : (
                             <div className="grid grid-cols-1 gap-2 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
-                              <div className="rounded-xl bg-slate-50 px-3 py-2">
+                              <div className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2">
                                 <div className="text-xs text-slate-400">中心设备</div>
-                                <div className="mt-1 font-medium text-slate-700">{knowledgeGraph.asset_name}</div>
+                                <div className="mt-1 font-medium text-[var(--color-text)]">{knowledgeGraph.asset_name}</div>
                               </div>
-                              <div className="rounded-xl bg-slate-50 px-3 py-2">
+                              <div className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2">
                                 <div className="text-xs text-slate-400">可视节点</div>
-                                <div className="mt-1 font-medium text-slate-700">{filteredGraphNodes.length} 个</div>
+                                <div className="mt-1 font-medium text-[var(--color-text)]">{filteredGraphNodes.length} 个</div>
                               </div>
-                              <div className="rounded-xl bg-slate-50 px-3 py-2">
+                              <div className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2">
                                 <div className="text-xs text-slate-400">可视关系</div>
-                                <div className="mt-1 font-medium text-slate-700">{filteredGraphEdges.length} 条</div>
+                                <div className="mt-1 font-medium text-[var(--color-text)]">{filteredGraphEdges.length} 条</div>
                               </div>
-                              <div className="rounded-xl bg-slate-50 px-3 py-2">
+                              <div className="rounded-xl bg-[var(--color-surface-raised)] px-3 py-2">
                                 <div className="text-xs text-slate-400">操作提示</div>
-                                <div className="mt-1 font-medium text-slate-700">点击节点或关系查看上下文</div>
+                                <div className="mt-1 font-medium text-[var(--color-text)]">点击节点或关系查看上下文</div>
                               </div>
                             </div>
                           )}
@@ -1390,13 +1390,13 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                 )}
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
                 <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-lg font-bold text-slate-800">关联节点详情</h3>
-                  <span className="text-sm text-slate-500">{knowledgeGraph?.nodes.length ?? 0} 个节点</span>
+                  <h3 className="text-lg font-bold text-[var(--color-text)]">关联节点详情</h3>
+                  <span className="text-sm text-[var(--color-text-weak)]">{knowledgeGraph?.nodes.length ?? 0} 个节点</span>
                 </div>
                 {!knowledgeGraph || knowledgeGraph.nodes.length <= 1 ? (
-                  <p className="text-sm text-slate-500">当前设备暂无更多关联节点。</p>
+                  <p className="text-sm text-[var(--color-text-weak)]">当前设备暂无更多关联节点。</p>
                 ) : (
                   <div className="space-y-4">
                     {groupedNodes.map(([type, nodes]) => {
@@ -1414,14 +1414,14 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                             {nodes.map((node) => (
                               <div
                                 key={node.id}
-                                className={`rounded-xl border border-white/70 bg-white/80 p-4 shadow-sm transition ${selectedGraphNodeId === node.id ? "ring-2 ring-blue-300" : ""}`}
+                                className={`rounded-xl border border-white/70 bg-[var(--color-surface)]/80 p-4 shadow-sm transition ${selectedGraphNodeId === node.id ? "ring-2 ring-blue-300" : ""}`}
                                 onClick={() => {
                                   setSelectedGraphNodeId(node.id);
                                   setSelectedGraphEdgeKey(null);
                                 }}
                               >
                                 <div className="mb-2 flex items-center justify-between gap-2">
-                                  <div className="text-sm font-semibold text-slate-800">{node.name}</div>
+                                  <div className="text-sm font-semibold text-[var(--color-text)]">{node.name}</div>
                                   <span className={`rounded-full px-2 py-1 text-[10px] font-medium ${style.badge}`}>
                                     {typeDisplayName(node.node_type)}
                                   </span>
@@ -1447,13 +1447,13 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                 )}
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
                 <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-lg font-bold text-slate-800">关系链路</h3>
-                  <span className="text-sm text-slate-500">{knowledgeGraph?.edges.length ?? 0} 条关系</span>
+                  <h3 className="text-lg font-bold text-[var(--color-text)]">关系链路</h3>
+                  <span className="text-sm text-[var(--color-text-weak)]">{knowledgeGraph?.edges.length ?? 0} 条关系</span>
                 </div>
                 {!knowledgeGraph || knowledgeGraph.edges.length === 0 ? (
-                  <p className="text-sm text-slate-500">暂无可展示关系。</p>
+                  <p className="text-sm text-[var(--color-text-weak)]">暂无可展示关系。</p>
                 ) : (
                   <div className="space-y-4">
                     {groupedEdges.map(([type, edges]) => {
@@ -1491,17 +1491,17 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                                     <span className={`rounded-full px-2 py-1 text-[10px] font-medium ${sourceStyle.badge}`}>
                                       {typeDisplayName(source?.node_type ?? "Entity")}
                                     </span>
-                                    <span className="font-semibold text-slate-700">{source?.name ?? edge.source}</span>
-                                    <span className="rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-600 shadow-sm">
+                                    <span className="font-semibold text-[var(--color-text)]">{source?.name ?? edge.source}</span>
+                                    <span className="rounded-full bg-[var(--color-surface)]/90 px-2 py-1 text-[10px] font-semibold text-slate-600 shadow-sm">
                                       {relationDisplayName(edge.relation_type)}
                                     </span>
-                                    <span className="font-semibold text-slate-700">{target?.name ?? edge.target}</span>
+                                    <span className="font-semibold text-[var(--color-text)]">{target?.name ?? edge.target}</span>
                                     <span className={`rounded-full px-2 py-1 text-[10px] font-medium ${targetStyle.badge}`}>
                                       {typeDisplayName(target?.node_type ?? "Entity")}
                                     </span>
                                   </div>
                                   {Object.keys(edge.properties ?? {}).length > 0 && (
-                                    <div className="mt-2 text-xs text-slate-500">
+                                    <div className="mt-2 text-xs text-[var(--color-text-weak)]">
                                       {Object.entries(edge.properties)
                                         .slice(0, 4)
                                         .map(([key, value]) => `${key}: ${String(value)}`)
@@ -1534,13 +1534,13 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
+    <div className="h-full overflow-y-auto bg-[var(--color-surface-raised)]/30 p-6 md:p-8">
       <header className="mb-6 flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => void fetchAssets()} className="btn-top-outline gap-2 text-slate-700">
+          <button type="button" onClick={() => void fetchAssets()} className="btn-secondary gap-2">
             <Database size={18} /> 同步资产
           </button>
-          <button type="button" onClick={openCreate} className="btn-top-primary gap-2">
+          <button type="button" onClick={openCreate} className="btn-primary gap-2">
             <Plus size={18} /> 新增资产
           </button>
         </div>
@@ -1550,7 +1550,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           <input
-            className="h-9 w-56 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs outline-none focus:border-blue-300"
+            className="h-9 w-56 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] pl-8 pr-3 text-xs outline-none focus:border-blue-300"
             placeholder="搜索资产名称、ID 或位置..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -1563,7 +1563,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
           />
         </div>
         <select
-          className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-blue-300"
+          className="h-9 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs text-[var(--color-text)] outline-none focus:border-blue-300"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as AssetStatus | "all")}
         >
@@ -1578,7 +1578,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
             setPage(1);
             void fetchAssets(1, pageSize);
           }}
-          className="btn-top-outline"
+          className="btn-secondary"
         >
           查询
         </button>
@@ -1586,23 +1586,23 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
 
       {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm">
         <table className="w-full border-collapse text-left">
           <thead>
-            <tr className="bg-slate-50">
-              <th className="table-th">资产名称</th>
-              <th className="table-th">资产ID</th>
-              <th className="table-th">类型</th>
-              <th className="table-th">位置</th>
-              <th className="table-th">健康度</th>
-              <th className="table-th">状态</th>
-              <th className="table-th">操作</th>
+            <tr className="bg-[var(--color-surface-raised)]">
+              <th className="table-header">资产名称</th>
+              <th className="table-header">资产ID</th>
+              <th className="table-header">类型</th>
+              <th className="table-header">位置</th>
+              <th className="table-header">健康度</th>
+              <th className="table-header">状态</th>
+              <th className="table-header">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-[var(--color-text-weak)]">
                   <span className="inline-flex items-center gap-2">
                     <Loader2 size={14} className="animate-spin text-blue-600" /> 资产加载中...
                   </span>
@@ -1610,29 +1610,29 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
               </tr>
             ) : assets.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-[var(--color-text-weak)]">
                   暂无资产数据
                 </td>
               </tr>
             ) : (
               assets.map((asset) => (
-                <tr key={asset.id} className="cursor-pointer hover:bg-slate-50/60" onClick={() => openDetail(asset)}>
-                  <td className="table-td">
+                <tr key={asset.id} className="cursor-pointer hover:bg-[var(--color-surface-raised)]/60" onClick={() => openDetail(asset)}>
+                  <td className="table-cell">
                     <div className="flex items-center justify-center gap-3">
                       <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
                         {asset.type === "动力设备" ? <Cpu size={18} /> : <Box size={18} />}
                       </span>
                       <div>
-                        <div className="text-sm font-bold text-slate-800">{asset.name}</div>
+                        <div className="text-sm font-bold text-[var(--color-text)]">{asset.name}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="table-td font-mono text-xs text-slate-500">{asset.id}</td>
-                  <td className="table-td text-sm text-slate-600">{asset.type}</td>
-                  <td className="table-td text-sm text-slate-600">{asset.location}</td>
-                  <td className="table-td">
+                  <td className="table-cell font-mono text-xs text-[var(--color-text-weak)]">{asset.id}</td>
+                  <td className="table-cell text-sm text-slate-600">{asset.type}</td>
+                  <td className="table-cell text-sm text-slate-600">{asset.location}</td>
+                  <td className="table-cell">
                     <div className="flex items-center gap-2">
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-raised)]">
                         <div
                           className={`h-full rounded-full ${asset.health > 80 ? "bg-emerald-500" : asset.health > 50 ? "bg-orange-500" : "bg-red-500"}`}
                           style={{ width: `${asset.health}%` }}
@@ -1641,7 +1641,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                       <span className="text-xs font-bold text-slate-600">{asset.health}%</span>
                     </div>
                   </td>
-                  <td className="table-td">
+                  <td className="table-cell">
                     <span
                       className={`rounded-lg px-2 py-1 text-[10px] font-bold uppercase ${
                         asset.status === "Normal"
@@ -1654,7 +1654,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                       {statusLabel(asset.status)}
                     </span>
                   </td>
-                  <td className="table-td">
+                  <td className="table-cell">
                     <div className="flex items-center justify-center gap-2">
                       <button
                         type="button"
@@ -1662,7 +1662,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                           e.stopPropagation();
                           openDetail(asset);
                         }}
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
+                        className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text)] transition hover:bg-[var(--color-surface-raised)]"
                       >
                         <span className="inline-flex items-center gap-1">
                           <Pencil size={13} /> 详情
@@ -1699,49 +1699,49 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
 
       {showCreateModal && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/35 p-4">
-          <div className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
-            <h3 className="mb-3 text-lg font-bold text-slate-800">新增资产</h3>
+          <div className="w-full max-w-3xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-xl">
+            <h3 className="mb-3 text-lg font-bold text-[var(--color-text)]">新增资产</h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <input
-                className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                className="h-10 rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                 placeholder="资产 ID"
                 value={createForm.id}
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, id: e.target.value }))}
               />
               <input
-                className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                className="h-10 rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                 placeholder="资产名称"
                 value={createForm.name}
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
               />
               <input
-                className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                className="h-10 rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                 placeholder="资产类型"
                 value={createForm.type}
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, type: e.target.value }))}
               />
               <input
-                className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                className="h-10 rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                 placeholder="部署位置"
                 value={createForm.location}
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, location: e.target.value }))}
               />
               <input
-                className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                className="h-10 rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                 placeholder="模型文件"
                 value={createForm.modelFile}
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, modelFile: e.target.value }))}
               />
               <input
                 type="number"
-                className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300"
+                className="h-10 rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300"
                 min={0}
                 max={100}
                 value={createForm.health}
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, health: Number(e.target.value) }))}
               />
               <select
-                className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 md:col-span-2"
+                className="h-10 rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300 md:col-span-2"
                 value={createForm.status}
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, status: e.target.value as AssetStatus }))}
               >
@@ -1757,7 +1757,7 @@ export default function DigitalAssetsPanel({ apiBaseUrl, token }: DigitalAssetsP
                   setShowCreateModal(false);
                   setCreateForm(emptyForm);
                 }}
-                className="h-10 rounded-xl border border-slate-200 px-4 text-sm text-slate-700 transition hover:bg-slate-50"
+                className="h-10 rounded-xl border border-[var(--color-border)] px-4 text-sm text-[var(--color-text)] transition hover:bg-[var(--color-surface-raised)]"
               >
                 取消
               </button>

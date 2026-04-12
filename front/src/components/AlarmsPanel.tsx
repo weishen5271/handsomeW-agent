@@ -39,46 +39,46 @@ export default function AlarmsPanel() {
 
   if (selectedAlarm) {
     return (
-      <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
+      <div className="h-full overflow-y-auto bg-[var(--color-surface-raised)] p-6 md:p-8">
         <div className="mb-4">
           <button
             type="button"
             onClick={() => setSelectedAlarmId(null)}
-            className="inline-flex items-center gap-1 text-sm text-slate-500 transition hover:text-slate-700"
+            className="inline-flex items-center gap-1 text-sm text-[var(--color-text-weak)] transition hover:text-[var(--color-text)]"
           >
             <ArrowLeft size={14} /> 返回告警列表
           </button>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="card rounded-2xl p-5">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
-              <p className="text-lg font-bold text-slate-800">{selectedAlarm.asset}</p>
-              <p className="font-mono text-xs text-slate-500">{selectedAlarm.id}</p>
+              <p className="text-lg font-bold text-[var(--color-text)]">{selectedAlarm.asset}</p>
+              <p className="font-mono text-xs text-[var(--color-text-weak)]">{selectedAlarm.id}</p>
             </div>
             <span
               className={`rounded-full px-3 py-1 text-xs font-bold ${
                 selectedAlarm.status === "Active"
-                  ? "bg-red-50 text-red-600"
+                  ? "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400"
                   : selectedAlarm.status === "Acknowledged"
-                    ? "bg-blue-50 text-blue-600"
-                    : "bg-emerald-50 text-emerald-600"
+                    ? "bg-[rgba(27,97,201,0.1)] text-primary"
+                    : "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
               }`}
             >
               {alarmStatusLabel(selectedAlarm.status)}
             </span>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="rounded-xl bg-slate-50 p-3 text-sm">
-              <p className="text-xs text-slate-500">告警级别</p>
-              <p className="mt-1 font-semibold text-slate-700">{alarmSeverityLabel(selectedAlarm.severity)}</p>
+            <div className="rounded-xl bg-[var(--color-surface-raised)] p-3 text-sm">
+              <p className="text-xs text-[var(--color-text-weak)]">告警级别</p>
+              <p className="mt-1 font-semibold text-[var(--color-text)]">{alarmSeverityLabel(selectedAlarm.severity)}</p>
             </div>
-            <div className="rounded-xl bg-slate-50 p-3 text-sm">
-              <p className="text-xs text-slate-500">触发时间</p>
-              <p className="mt-1 font-semibold text-slate-700">{selectedAlarm.time}</p>
+            <div className="rounded-xl bg-[var(--color-surface-raised)] p-3 text-sm">
+              <p className="text-xs text-[var(--color-text-weak)]">触发时间</p>
+              <p className="mt-1 font-semibold text-[var(--color-text)]">{selectedAlarm.time}</p>
             </div>
-            <div className="rounded-xl bg-slate-50 p-3 text-sm md:col-span-2">
-              <p className="text-xs text-slate-500">告警内容</p>
-              <p className="mt-1 text-slate-700">{selectedAlarm.message}</p>
+            <div className="rounded-xl bg-[var(--color-surface-raised)] p-3 text-sm md:col-span-2">
+              <p className="text-xs text-[var(--color-text-weak)]">告警内容</p>
+              <p className="mt-1 text-[var(--color-text)]">{selectedAlarm.message}</p>
             </div>
           </div>
         </div>
@@ -87,71 +87,71 @@ export default function AlarmsPanel() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
+    <div className="h-full overflow-y-auto bg-[var(--color-surface-raised)] p-6 md:p-8">
       <header className="mb-6 flex items-center justify-end">
         <div className="flex gap-2">
-          <button className="btn-top-outline gap-2">
+          <button className="btn-secondary gap-2">
             <CheckCircle2 size={16} /> 全部已读
           </button>
-          <button className="btn-top-primary gap-2">
+          <button className="btn-primary gap-2">
             <Bell size={16} /> 订阅通知
           </button>
         </div>
       </header>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="card overflow-hidden">
         <table className="w-full border-collapse text-left">
           <thead>
-            <tr className="bg-slate-50">
-              <th className="table-th">告警ID</th>
-              <th className="table-th">资产</th>
-              <th className="table-th">级别</th>
-              <th className="table-th">时间</th>
-              <th className="table-th">状态</th>
-              <th className="table-th">操作</th>
+            <tr className="bg-[var(--color-surface-raised)]">
+              <th className="table-header">告警ID</th>
+              <th className="table-header">资产</th>
+              <th className="table-header">级别</th>
+              <th className="table-header">时间</th>
+              <th className="table-header">状态</th>
+              <th className="table-header">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-[var(--color-border)]">
             {pagedAlarms.map((alarm) => (
-              <tr key={alarm.id} className="cursor-pointer hover:bg-slate-50/60" onClick={() => setSelectedAlarmId(alarm.id)}>
-                <td className="table-td font-mono text-xs text-slate-500">{alarm.id}</td>
-                <td className="table-td">
-                  <div className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-slate-700">
+              <tr key={alarm.id} className="cursor-pointer transition hover:bg-[var(--color-surface-raised)]" onClick={() => setSelectedAlarmId(alarm.id)}>
+                <td className="table-cell font-mono text-xs text-[var(--color-text-weak)]">{alarm.id}</td>
+                <td className="table-cell">
+                  <div className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-[var(--color-text)]">
                     {alarm.severity === "Critical" || alarm.severity === "High" ? (
                       <ShieldAlert size={14} className="text-orange-500" />
                     ) : (
-                      <Info size={14} className="text-blue-500" />
+                      <Info size={14} className="text-primary" />
                     )}
                     {alarm.asset}
                   </div>
                 </td>
-                <td className="table-td text-sm text-slate-600">{alarmSeverityLabel(alarm.severity)}</td>
-                <td className="table-td">
-                  <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                <td className="table-cell text-sm text-[var(--color-text-weak)]">{alarmSeverityLabel(alarm.severity)}</td>
+                <td className="table-cell">
+                  <span className="inline-flex items-center gap-1 text-xs text-[var(--color-text-weak)]">
                     <Clock size={12} /> {alarm.time}
                   </span>
                 </td>
-                <td className="table-td">
+                <td className="table-cell">
                   <span
                     className={`rounded-full px-2 py-1 text-xs font-bold ${
                       alarm.status === "Active"
-                        ? "bg-red-50 text-red-600"
+                        ? "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400"
                         : alarm.status === "Acknowledged"
-                          ? "bg-blue-50 text-blue-600"
-                          : "bg-emerald-50 text-emerald-600"
+                          ? "bg-[rgba(27,97,201,0.1)] text-primary"
+                          : "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
                     }`}
                   >
                     {alarmStatusLabel(alarm.status)}
                   </span>
                 </td>
-                <td className="table-td">
+                <td className="table-cell">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedAlarmId(alarm.id);
                     }}
-                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 transition hover:bg-slate-50"
+                    className="btn-secondary rounded-md px-2 py-1 text-xs"
                   >
                     详情
                   </button>

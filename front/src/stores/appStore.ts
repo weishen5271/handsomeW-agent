@@ -55,6 +55,7 @@ type LlmState = {
 type UiState = {
   userMenuOpen: boolean;
   selectedAsset: DigitalAsset | null;
+  theme: "light" | "dark";
 };
 
 type AppStore = {
@@ -117,6 +118,7 @@ const initialLlmState = (): LlmState => ({
 const initialUiState = (): UiState => ({
   userMenuOpen: false,
   selectedAsset: null,
+  theme: (localStorage.getItem("theme") as "light" | "dark") ?? "light",
 });
 
 export const useAppStore = create<AppStore>((set) => ({

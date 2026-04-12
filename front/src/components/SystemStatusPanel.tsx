@@ -6,12 +6,12 @@ function serviceStatusLabel(status: "Healthy" | "Warning"): string {
 
 export default function SystemStatusPanel() {
   return (
-    <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
+    <div className="h-full overflow-y-auto bg-[var(--color-surface-raised)] p-6 md:p-8">
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="mb-4 flex items-center gap-2 font-bold text-slate-800">
-              <Server size={20} className="text-blue-600" />
+          <section className="card rounded-2xl p-6">
+            <h3 className="mb-4 flex items-center gap-2 font-bold text-[var(--color-text)]">
+              <Server size={20} className="text-primary" />
               核心服务运行状态
             </h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -22,9 +22,9 @@ export default function SystemStatusPanel() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="mb-4 flex items-center gap-2 font-bold text-slate-800">
-              <Activity size={20} className="text-blue-600" />
+          <section className="card rounded-2xl p-6">
+            <h3 className="mb-4 flex items-center gap-2 font-bold text-[var(--color-text)]">
+              <Activity size={20} className="text-primary" />
               实时资源占用
             </h3>
             <div className="space-y-4">
@@ -37,21 +37,21 @@ export default function SystemStatusPanel() {
         </div>
 
         <div className="space-y-6">
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="mb-4 flex items-center gap-2 font-bold text-slate-800">
+          <section className="card rounded-2xl p-6">
+            <h3 className="mb-4 flex items-center gap-2 font-bold text-[var(--color-text)]">
               <ShieldCheck size={20} className="text-emerald-500" />
               安全与审计
             </h3>
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-[var(--color-text-weak)]">
               <InfoRow label="数据加密状态" value="AES-256 已开启" />
               <InfoRow label="最近审计时间" value="10分钟前" />
               <InfoRow label="异常访问拦截" value="0 次 (24h)" />
             </div>
           </section>
 
-          <section className="rounded-2xl bg-slate-900 p-6 text-white shadow-xl">
+          <section className="card rounded-2xl bg-[#181d26] p-6 text-white dark:bg-[#0f131a]">
             <div className="mb-4 flex items-center gap-2">
-              <Globe size={18} className="text-blue-300" />
+              <Globe size={18} className="text-[rgba(93,138,209,1)]" />
               <span className="font-bold">全球节点状态</span>
             </div>
             <div className="space-y-2 text-sm">
@@ -68,24 +68,24 @@ export default function SystemStatusPanel() {
 
 function ServiceStatusItem({ name, status, uptime, latency }: { name: string; status: "Healthy" | "Warning"; uptime: string; latency: string }) {
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-4">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm font-bold text-slate-800">{name}</span>
+        <span className="text-sm font-bold text-[var(--color-text)]">{name}</span>
         <span className="inline-flex items-center gap-2">
           <span className={`h-2 w-2 rounded-full ${status === "Healthy" ? "bg-emerald-500" : "bg-orange-500"}`} />
-          <span className={`text-[11px] font-semibold ${status === "Healthy" ? "text-emerald-600" : "text-orange-600"}`}>
+          <span className={`text-[11px] font-semibold ${status === "Healthy" ? "text-emerald-600 dark:text-emerald-400" : "text-orange-600 dark:text-orange-400"}`}>
             {serviceStatusLabel(status)}
           </span>
         </span>
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div>
-          <div className="text-slate-400">在线率</div>
-          <div className="font-semibold text-slate-700">{uptime}</div>
+          <div className="text-[var(--color-text-weak)]">在线率</div>
+          <div className="font-semibold text-[var(--color-text)]">{uptime}</div>
         </div>
         <div>
-          <div className="text-slate-400">延迟</div>
-          <div className="font-semibold text-slate-700">{latency}</div>
+          <div className="text-[var(--color-text-weak)]">延迟</div>
+          <div className="font-semibold text-[var(--color-text)]">{latency}</div>
         </div>
       </div>
     </div>
@@ -94,7 +94,7 @@ function ServiceStatusItem({ name, status, uptime, latency }: { name: string; st
 
 function ResourceProgress({ label, value, color }: { label: string; value: number; color: "blue" | "indigo" | "violet" | "emerald" }) {
   const colors = {
-    blue: "bg-blue-500",
+    blue: "bg-primary",
     indigo: "bg-indigo-500",
     violet: "bg-violet-500",
     emerald: "bg-emerald-500",
@@ -102,11 +102,11 @@ function ResourceProgress({ label, value, color }: { label: string; value: numbe
 
   return (
     <div>
-      <div className="mb-1 flex justify-between text-xs font-semibold text-slate-600">
+      <div className="mb-1 flex justify-between text-xs font-semibold text-[var(--color-text-weak)]">
         <span>{label}</span>
-        <span className="text-slate-800">{value}%</span>
+        <span className="text-[var(--color-text)]">{value}%</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+      <div className="h-2 overflow-hidden rounded-full bg-[var(--color-surface-raised)]">
         <div className={`h-full rounded-full ${colors[color]}`} style={{ width: `${value}%` }} />
       </div>
     </div>
@@ -115,9 +115,9 @@ function ResourceProgress({ label, value, color }: { label: string; value: numbe
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+    <div className="flex items-center justify-between rounded-xl bg-[var(--color-surface-raised)] p-3">
       <span>{label}</span>
-      <span className="font-bold text-slate-800">{value}</span>
+      <span className="font-bold text-[var(--color-text)]">{value}</span>
     </div>
   );
 }

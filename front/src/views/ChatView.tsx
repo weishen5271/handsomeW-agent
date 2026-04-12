@@ -46,7 +46,7 @@ export default function ChatView({
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       <div className="flex min-h-0 flex-1 flex-col">
-        <section ref={chatRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/30 p-6">
+        <section ref={chatRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[var(--color-surface-raised)] p-6">
           <AnimatePresence initial={false}>
             {messageItems.map((msg) => {
               const isUser = msg.role === "user";
@@ -60,32 +60,35 @@ export default function ChatView({
                   className={`flex items-start gap-3 ${isUser ? "justify-end" : "justify-start"}`}
                 >
                   {!isUser && (
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white">
                       <Bot size={16} />
                     </div>
                   )}
                   <div
-                    className={`max-w-[82%] rounded-2xl border border-slate-200 px-4 py-3 shadow-sm ${
-                      isUser ? "bg-blue-600 text-white" : "bg-white text-slate-800"
+                    className={`max-w-[82%] rounded-2xl border px-4 py-3 ${
+                      isUser
+                        ? "border-primary bg-primary text-white"
+                        : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]"
                     }`}
+                    style={{ boxShadow: 'var(--color-shadow-layer)' }}
                   >
-                    {msg.text && <p className="whitespace-pre-wrap leading-[1.6]">{msg.text}</p>}
+                    {msg.text && <p className="whitespace-pre-wrap leading-[1.6] tracking-tight">{msg.text}</p>}
                     {msg.imageUrl && (
                       <motion.div
                         initial={{ opacity: 0, scale: 0.96 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.22 }}
-                        className="mt-2 overflow-hidden rounded-2xl border border-slate-200"
+                        className="mt-2 overflow-hidden rounded-2xl border border-[var(--color-border)]"
                       >
                         <img src={msg.imageUrl} alt="生成图像" className="h-auto w-full object-cover" />
                       </motion.div>
                     )}
-                    <p className={`mt-2 text-[11px] font-bold tracking-widest ${isUser ? "text-blue-100" : "text-slate-400"}`}>
+                    <p className={`mt-2 text-[11px] font-medium tracking-widest ${isUser ? "text-white/70" : "text-[var(--color-text-weak)]"}`}>
                       {msg.timestamp}
                     </p>
                   </div>
                   {isUser && (
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[rgba(27,97,201,0.1)] text-primary">
                       <User size={16} />
                     </div>
                   )}
@@ -96,40 +99,40 @@ export default function ChatView({
 
           {draft && (
             <motion.article initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white">
                 <Bot size={16} />
               </div>
-              <div className="max-w-[82%] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm">
-                <p className="whitespace-pre-wrap leading-[1.6]">{draft}</p>
+              <div className="max-w-[82%] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-[var(--color-text)]" style={{ boxShadow: 'var(--color-shadow-layer)' }}>
+                <p className="whitespace-pre-wrap leading-[1.6] tracking-tight">{draft}</p>
               </div>
             </motion.article>
           )}
 
           {streamState.loading && streamState.label && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white">
                 <Loader2 size={16} className="animate-spin" />
               </div>
-              <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 shadow-sm">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
-                <p className="leading-[1.6]">{streamState.label}</p>
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-[var(--color-text)]" style={{ boxShadow: 'var(--color-shadow-layer)' }}>
+                <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+                <p className="leading-[1.6] tracking-tight">{streamState.label}</p>
               </div>
             </motion.div>
           )}
         </section>
 
-        <footer className="border-t border-slate-200 bg-white p-4">
-          <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-soft">
+        <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="card rounded-3xl p-3">
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-blue-600"
+                className="btn-secondary flex h-10 w-10 items-center justify-center"
                 title="上传图像"
               >
                 <Image size={18} />
               </button>
               <input
-                className="h-10 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-[16px] font-medium leading-[1.6] text-slate-800 outline-none transition-colors duration-200 placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                className="input h-10 flex-1 text-[16px]"
                 placeholder="输入你的问题，按回车发送"
                 value={input}
                 onChange={(e) => onInputChange(e.target.value)}
@@ -142,7 +145,7 @@ export default function ChatView({
               />
               <button
                 type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                className="btn-primary flex h-10 w-10 items-center justify-center"
                 onClick={() => void onSend()}
                 disabled={streamState.loading}
                 title="发送消息"
@@ -151,29 +154,29 @@ export default function ChatView({
               </button>
             </div>
           </div>
-          <div className="mt-3 flex items-center justify-between px-1 text-[11px] font-bold tracking-widest text-slate-400">
+          <div className="mt-3 flex items-center justify-between px-1 text-[11px] font-medium tracking-widest text-[var(--color-text-weak)]">
             <div className="space-y-1">
               <p>版权所有 2026 Lumina 智能系统</p>
               <p>由 React Agent 流式接口驱动</p>
             </div>
-            <button className="text-slate-500 transition hover:text-blue-600" type="button" onClick={onArchive}>
+            <button className="text-[var(--color-text-weak)] transition hover:text-primary" type="button" onClick={onArchive}>
               存档
             </button>
           </div>
         </footer>
       </div>
 
-      <aside className="flex h-72 shrink-0 flex-col border-t border-slate-200 bg-white lg:h-auto lg:w-80 lg:border-l lg:border-t-0">
-        <div className="border-b border-slate-200 p-4">
+      <aside className="flex h-72 shrink-0 flex-col border-t border-[var(--color-border)] bg-[var(--color-surface)] lg:h-auto lg:w-80 lg:border-l lg:border-t-0">
+        <div className="border-b border-[var(--color-border)] p-4">
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-700">会话历史</p>
-            <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+            <p className="text-sm font-semibold text-[var(--color-text)]">会话历史</p>
+            <span className="rounded-lg bg-[var(--color-surface-raised)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-weak)]">
               {sessionList.length}
             </span>
           </div>
           <button
             type="button"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            className="btn-primary inline-flex w-full items-center justify-center gap-2"
             onClick={() => void onCreateSession()}
             disabled={streamState.loading}
           >
@@ -184,12 +187,12 @@ export default function ChatView({
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {sessionsLoading ? (
-            <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              <Loader2 size={12} className="animate-spin text-blue-600" />
+            <div className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3 py-2 text-xs text-[var(--color-text-weak)]">
+              <Loader2 size={12} className="animate-spin text-primary" />
               加载会话中...
             </div>
           ) : !sessionList.length ? (
-            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-5 text-center text-xs text-slate-500">
+            <p className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3 py-5 text-center text-xs text-[var(--color-text-weak)]">
               暂无历史会话
             </p>
           ) : (
@@ -201,15 +204,17 @@ export default function ChatView({
                     key={session.id}
                     type="button"
                     className={`w-full rounded-xl border px-3 py-2 text-left transition ${
-                      active ? "border-blue-200 bg-blue-50" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                      active
+                        ? "border-primary bg-[rgba(27,97,201,0.1)]"
+                        : "border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-text-weak)]"
                     }`}
                     onClick={() => void onSwitchSession(session.id)}
                     disabled={streamState.loading}
                   >
-                    <p className={`truncate text-sm font-semibold ${active ? "text-blue-700" : "text-slate-700"}`}>
+                    <p className={`truncate text-sm font-semibold ${active ? "text-primary" : "text-[var(--color-text)]"}`}>
                       {buildSessionTitle(session, index)}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">{formatSessionTime(session.last_message_at ?? session.created_at)}</p>
+                    <p className="mt-1 text-xs text-[var(--color-text-weak)]">{formatSessionTime(session.last_message_at ?? session.created_at)}</p>
                   </button>
                 );
               })}

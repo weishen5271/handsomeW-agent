@@ -47,7 +47,7 @@ function LoadingOverlay() {
   const { progress } = useProgress();
   return (
     <Html center>
-      <div className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2 text-xs font-semibold text-[var(--color-text)] shadow">
         模型加载中 {Math.round(progress)}%
       </div>
     </Html>
@@ -128,14 +128,14 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
 
   if (!asset) {
     return (
-      <section className="flex h-full items-center justify-center bg-slate-50/30 p-6">
-        <div className="max-w-lg rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-          <h3 className="text-xl font-bold text-slate-800">模型漫游</h3>
-          <p className="mt-2 text-slate-500">请先进入资产详情页，再开启当前数字资产的模型漫游。</p>
+      <section className="flex h-full items-center justify-center bg-[var(--color-surface-raised)]/30 p-6">
+        <div className="card max-w-lg p-6 text-center">
+          <h3 className="text-xl font-bold text-[var(--color-text)]">模型漫游</h3>
+          <p className="mt-2 text-[var(--color-text-weak)]">请先进入资产详情页，再开启当前数字资产的模型漫游。</p>
           <button
             type="button"
             onClick={onBackToAssets}
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700"
+            className="btn-primary mt-5 inline-flex items-center gap-2"
           >
             返回数字资产
           </button>
@@ -152,30 +152,30 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
   }, [modelUrl]);
 
   return (
-    <section className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
+    <section className="h-full overflow-y-auto bg-[var(--color-surface-raised)]/30 p-6 md:p-8">
       <div className="mb-5 flex items-start justify-between gap-3">
-        <div className="space-y-1 text-sm text-slate-600">
+        <div className="space-y-1 text-sm text-[var(--color-text-weak)]">
           <p>
-            当前资产：<span className="font-semibold text-slate-800">{asset.name}</span>
+            当前资产：<span className="font-semibold text-[var(--color-text)]">{asset.name}</span>
           </p>
           <p>
-            模型文件：<span className="font-mono text-slate-700">{modelName}</span>
+            模型文件：<span className="font-mono text-[var(--color-text)]">{modelName}</span>
           </p>
         </div>
         <button
           type="button"
           onClick={onBackToAssets}
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-slate-700 transition hover:bg-slate-50"
+          className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-[var(--color-text)] transition hover:bg-[var(--color-surface-raised)]"
         >
           <RotateCcw size={16} /> 返回资产库
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
-        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 shadow-sm">
+        <div className="rounded-2xl border border-[var(--color-border)] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 shadow-sm">
           <div className="relative h-[440px] overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
             {!modelUrl ? (
-              <div className="flex h-full items-center justify-center text-sm text-slate-300">当前资产未配置模型地址</div>
+              <div className="flex h-full items-center justify-center text-sm text-[var(--color-text-weak)]">当前资产未配置模型地址</div>
             ) : (
               <Canvas camera={{ position: [0, 1.8, 5.6], fov: 45 }}>
                 <color attach="background" args={["#020617"]} />
@@ -210,34 +210,34 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
           {loadError ? (
             <p className="mt-3 text-xs text-red-300">{loadError}</p>
           ) : (
-            <p className="mt-3 text-xs text-slate-300">支持鼠标拖拽旋转、滚轮缩放，也可通过右侧滑条微调姿态。</p>
+            <p className="mt-3 text-xs text-[var(--color-text-weak)]">支持鼠标拖拽旋转、滚轮缩放，也可通过右侧滑条微调姿态。</p>
           )}
         </div>
 
-        <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-slate-800">
+        <aside className="card p-5">
+          <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-[var(--color-text)]">
             <Box size={18} className="text-blue-600" /> 模型信息
           </h3>
 
           <div className="space-y-4 text-sm">
             <dl className="space-y-2">
               <div>
-                <dt className="text-slate-400">模型名称</dt>
-                <dd className="font-semibold text-slate-800">{modelName}</dd>
+                <dt className="text-[var(--color-text-weak)]">模型名称</dt>
+                <dd className="font-semibold text-[var(--color-text)]">{modelName}</dd>
               </div>
               <div>
-                <dt className="text-slate-400">模型来源</dt>
-                <dd className="break-all font-mono text-xs text-slate-700">{modelUrl || "--"}</dd>
+                <dt className="text-[var(--color-text-weak)]">模型来源</dt>
+                <dd className="break-all font-mono text-xs text-[var(--color-text)]">{modelUrl || "--"}</dd>
               </div>
               <div>
-                <dt className="text-slate-400">对象键</dt>
-                <dd className="break-all font-mono text-xs text-slate-700">{asset.minioObjectKey || "--"}</dd>
+                <dt className="text-[var(--color-text-weak)]">对象键</dt>
+                <dd className="break-all font-mono text-xs text-[var(--color-text)]">{asset.minioObjectKey || "--"}</dd>
               </div>
             </dl>
 
             <div className="space-y-2">
               <label className="block space-y-1">
-                <span className="text-xs text-slate-500">缩放</span>
+                <span className="text-xs text-[var(--color-text-weak)]">缩放</span>
                 <input
                   type="range"
                   min={0.5}
@@ -250,7 +250,7 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs text-slate-500">左右旋转</span>
+                <span className="text-xs text-[var(--color-text-weak)]">左右旋转</span>
                 <input
                   type="range"
                   min={-180}
@@ -263,7 +263,7 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs text-slate-500">俯仰角</span>
+                <span className="text-xs text-[var(--color-text-weak)]">俯仰角</span>
                 <input
                   type="range"
                   min={-75}
@@ -284,7 +284,7 @@ export default function Scene3DPanel({ apiBaseUrl: _apiBaseUrl, token: _token, a
                 setTiltX(0);
                 setLoadError("");
               }}
-              className="btn-top-outline w-full"
+              className="btn-secondary w-full"
             >
               重置视角
             </button>

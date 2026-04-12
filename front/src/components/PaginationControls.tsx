@@ -43,47 +43,47 @@ export default function PaginationControls({
   };
 
   return (
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-navy-300">
       <div>共 {total} 条</div>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          className="h-8 rounded-md border border-slate-200 bg-white px-2 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="h-8 rounded-md border border-neutral-border bg-white px-2 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-navy-600 dark:bg-navy-700 dark:text-navy-200 dark:hover:bg-navy-600"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
           上一页
         </button>
-        <span>
+        <span className="dark:text-navy-200">
           第 {page}/{totalPages} 页
         </span>
         <button
           type="button"
-          className="h-8 rounded-md border border-slate-200 bg-white px-2 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="h-8 rounded-md border border-neutral-border bg-white px-2 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-navy-600 dark:bg-navy-700 dark:text-navy-200 dark:hover:bg-navy-600"
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
         >
           下一页
         </button>
-        <span>跳转</span>
+        <span className="dark:text-navy-200">跳转</span>
         <input
           value={jumpValue}
           onChange={(e) => setJumpValue(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") applyJump();
           }}
-          className="h-8 w-16 rounded-md border border-slate-200 px-2 outline-none focus:border-blue-300"
+          className="h-8 w-16 rounded-md border border-neutral-border px-2 outline-none transition-colors focus:border-airtable-blue-300 dark:border-navy-600 dark:bg-navy-700 dark:text-white dark:placeholder:text-navy-300"
           inputMode="numeric"
         />
         <button
           type="button"
-          className="h-8 rounded-md border border-slate-200 bg-white px-2 transition hover:bg-slate-50"
+          className="h-8 rounded-md border border-neutral-border bg-white px-2 transition hover:bg-slate-50 dark:border-navy-600 dark:bg-navy-700 dark:text-navy-200 dark:hover:bg-navy-600"
           onClick={applyJump}
         >
           确认
         </button>
         <select
-          className="h-8 rounded-md border border-slate-200 bg-white px-2 outline-none focus:border-blue-300"
+          className="h-8 rounded-md border border-neutral-border bg-white px-2 outline-none transition-colors focus:border-airtable-blue-300 dark:border-navy-600 dark:bg-navy-700 dark:text-navy-200"
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
         >

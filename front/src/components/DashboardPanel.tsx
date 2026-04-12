@@ -11,9 +11,9 @@ const trendData = [
 
 export default function DashboardPanel() {
   return (
-    <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
+    <div className="h-full overflow-y-auto bg-[var(--color-surface-raised)] p-6 md:p-8">
       <div className="mb-4 flex justify-end">
-        <div className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm md:flex">
+        <div className="hidden items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium text-[var(--color-text-weak)] md:flex">
           <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
           实时同步已激活
         </div>
@@ -27,28 +27,28 @@ export default function DashboardPanel() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
-          <h3 className="mb-5 flex items-center gap-2 font-bold text-slate-800">
-            <TrendingUp size={20} className="text-blue-600" />
+        <section className="card rounded-2xl p-6 xl:col-span-2">
+          <h3 className="mb-5 flex items-center gap-2 font-bold text-[var(--color-text)]">
+            <TrendingUp size={20} className="text-primary" />
             振动遥测趋势 (2 号线)
           </h3>
           <div className="space-y-3">
             {trendData.map((item) => (
               <div key={item.time}>
-                <div className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-500">
+                <div className="mb-1 flex items-center justify-between text-xs font-semibold text-[var(--color-text-weak)]">
                   <span>{item.time}</span>
                   <span>{item.value}</span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full bg-blue-500" style={{ width: `${item.value}%` }} />
+                <div className="h-2 overflow-hidden rounded-full bg-[var(--color-surface-raised)]">
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${item.value}%` }} />
                 </div>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="mb-5 flex items-center gap-2 font-bold text-slate-800">
+        <section className="card rounded-2xl p-6">
+          <h3 className="mb-5 flex items-center gap-2 font-bold text-[var(--color-text)]">
             <Zap size={20} className="text-orange-500" />
             最近 RCA 洞察
           </h3>
@@ -64,25 +64,25 @@ export default function DashboardPanel() {
 }
 
 function StatCard({ icon: Icon, label, value, trend, color }: { icon: typeof Activity; label: string; value: string; trend: string; color: "blue" | "red" | "emerald" | "orange" }) {
-  const colors = {
-    blue: "bg-blue-50 text-blue-600",
-    red: "bg-red-50 text-red-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    orange: "bg-orange-50 text-orange-600",
+  const colorStyles = {
+    blue: { bg: "bg-[rgba(27,97,201,0.1)]", text: "text-primary" },
+    red: { bg: "bg-red-50 dark:bg-red-900/30", text: "text-red-600 dark:text-red-400" },
+    emerald: { bg: "bg-emerald-50 dark:bg-emerald-900/30", text: "text-emerald-600 dark:text-emerald-400" },
+    orange: { bg: "bg-orange-50 dark:bg-orange-900/30", text: "text-orange-600 dark:text-orange-400" },
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="card rounded-2xl p-5">
       <div className="mb-3 flex items-start justify-between">
-        <span className={`rounded-xl p-3 ${colors[color]}`}>
+        <span className={`rounded-xl p-3 ${colorStyles[color].bg} ${colorStyles[color].text}`}>
           <Icon size={20} />
         </span>
-        <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${trend.startsWith("+") ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"}`}>
+        <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${trend.startsWith("+") ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400"}`}>
           {trend}
         </span>
       </div>
-      <div className="text-2xl font-bold text-slate-800">{value}</div>
-      <div className="text-sm font-medium text-slate-500">{label}</div>
+      <div className="text-2xl font-bold text-[var(--color-text)]">{value}</div>
+      <div className="text-sm font-medium text-[var(--color-text-weak)]">{label}</div>
     </div>
   );
 }
@@ -91,7 +91,7 @@ function InsightItem({ title, desc, time, severity }: { title: string; desc: str
   const severityColor = {
     high: "bg-red-500",
     medium: "bg-orange-500",
-    low: "bg-blue-500",
+    low: "bg-primary",
   };
 
   return (
@@ -99,10 +99,10 @@ function InsightItem({ title, desc, time, severity }: { title: string; desc: str
       <div className={`h-12 w-1 shrink-0 rounded-full ${severityColor[severity]}`} />
       <div>
         <div className="mb-1 flex items-center gap-2">
-          <span className="text-sm font-bold text-slate-800">{title}</span>
-          <span className="text-[10px] font-medium text-slate-400">{time}</span>
+          <span className="text-sm font-bold text-[var(--color-text)]">{title}</span>
+          <span className="text-[10px] font-medium text-[var(--color-text-weak)]">{time}</span>
         </div>
-        <p className="text-xs leading-relaxed text-slate-500">{desc}</p>
+        <p className="text-xs leading-relaxed text-[var(--color-text-weak)]">{desc}</p>
       </div>
     </div>
   );

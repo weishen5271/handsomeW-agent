@@ -374,7 +374,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
+    <div className="h-full overflow-y-auto bg-[var(--color-surface-raised)]/30 p-6 md:p-8">
       <header className="mb-6 flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-2">
           <button
@@ -386,14 +386,14 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
               }
               void fetchScenes();
             }}
-            className="btn-top-outline"
+            className="btn-secondary"
           >
             <RefreshCw size={14} /> 刷新
           </button>
           <button
             type="button"
             onClick={() => setShowCreateScene((v) => !v)}
-            className="btn-top-primary"
+            className="btn-primary"
           >
             <Plus size={14} /> 新建场景
           </button>
@@ -408,34 +408,34 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
       )}
 
       {showCreateScene && (
-        <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-3 font-bold text-slate-800">新建场景</h3>
+        <section className="card mb-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
+          <h3 className="mb-3 font-bold text-[var(--color-text)]">新建场景</h3>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <input
               value={createSceneForm.id}
               onChange={(e) => setCreateSceneForm((prev) => ({ ...prev, id: e.target.value }))}
               placeholder="场景 ID（如 factory-main）"
-              className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              className="h-10 rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
             />
             <input
               value={createSceneForm.name}
               onChange={(e) => setCreateSceneForm((prev) => ({ ...prev, name: e.target.value }))}
               placeholder="场景名称"
-              className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              className="h-10 rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
             />
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => void createScene()}
                 disabled={saving}
-                className="btn-top-primary"
+                className="btn-primary"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : "创建"}
               </button>
               <button
                 type="button"
                 onClick={() => setShowCreateScene(false)}
-                className="btn-top-outline"
+                className="btn-secondary"
               >
                 取消
               </button>
@@ -446,13 +446,13 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
             onChange={(e) => setCreateSceneForm((prev) => ({ ...prev, description: e.target.value }))}
             placeholder="场景描述（可选）"
             rows={3}
-            className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            className="mt-3 w-full rounded-xl border border-[var(--color-border)] px-3 py-2 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
           />
         </section>
       )}
 
       {!showSceneDetail ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <section className="card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
           <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
             <div className="relative">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -466,7 +466,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                   }
                 }}
                 placeholder="输入关键字后回车"
-                className="h-9 w-56 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs outline-none focus:border-blue-300"
+                className="h-9 w-56 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] pl-8 pr-3 text-xs outline-none focus:border-blue-300"
               />
             </div>
             <button
@@ -475,43 +475,43 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                 setScenePage(1);
                 void fetchScenes(1, scenePageSize);
               }}
-              className="btn-top-outline"
+              className="btn-secondary"
             >
               查询
             </button>
           </div>
-          <div className="max-h-[620px] overflow-y-auto rounded-xl border border-slate-200">
+          <div className="max-h-[620px] overflow-y-auto rounded-xl border border-[var(--color-border)]">
             {loading && scenes.length === 0 ? (
-              <div className="px-3 py-4 text-sm text-slate-500">
+              <div className="px-3 py-4 text-sm text-[var(--color-text-weak)]">
                 <span className="inline-flex items-center gap-2">
                   <Loader2 size={14} className="animate-spin text-blue-600" /> 加载场景中...
                 </span>
               </div>
             ) : scenes.length === 0 ? (
-              <p className="bg-slate-50 p-3 text-sm text-slate-500">暂无场景，请先创建。</p>
+              <p className="bg-[var(--color-surface-raised)] p-3 text-sm text-[var(--color-text-weak)]">暂无场景，请先创建。</p>
             ) : (
               <table className="w-full border-collapse text-left">
                 <thead>
-                  <tr className="bg-slate-50">
-                    <th className="table-th">场景名称</th>
-                    <th className="table-th">场景ID</th>
-                    <th className="table-th">资产数</th>
-                    <th className="table-th">更新时间</th>
-                    <th className="table-th">操作</th>
+                  <tr className="bg-[var(--color-surface-raised)]">
+                    <th className="table-header">场景名称</th>
+                    <th className="table-header">场景ID</th>
+                    <th className="table-header">资产数</th>
+                    <th className="table-header">更新时间</th>
+                    <th className="table-header">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {scenes.map((scene) => (
-                    <tr key={scene.id} className="transition hover:bg-slate-50">
-                      <td className="table-td text-sm font-semibold text-slate-700">{scene.name}</td>
-                      <td className="table-td font-mono text-xs text-slate-500">{scene.id}</td>
-                      <td className="table-td text-sm text-slate-600">{scene.asset_count}</td>
-                      <td className="table-td text-xs text-slate-500">{new Date(scene.updated_at).toLocaleDateString()}</td>
-                      <td className="table-td">
+                    <tr key={scene.id} className="transition hover:bg-[var(--color-surface-raised)]">
+                      <td className="table-cell text-sm font-semibold text-[var(--color-text)]">{scene.name}</td>
+                      <td className="table-cell font-mono text-xs text-[var(--color-text-weak)]">{scene.id}</td>
+                      <td className="table-cell text-sm text-[var(--color-text)]">{scene.asset_count}</td>
+                      <td className="table-cell text-xs text-[var(--color-text-weak)]">{new Date(scene.updated_at).toLocaleDateString()}</td>
+                      <td className="table-cell">
                         <button
                           type="button"
                           onClick={() => void openSceneDetail(scene.id)}
-                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 transition hover:bg-slate-50"
+                          className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-text)] transition hover:bg-[var(--color-surface-raised)]"
                         >
                           详情
                         </button>
@@ -543,22 +543,22 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                 setSelectedSceneId(null);
                 setSceneDetail(null);
               }}
-              className="inline-flex items-center gap-1 text-sm text-slate-500 transition hover:text-slate-700"
+              className="inline-flex items-center gap-1 text-sm text-[var(--color-text-weak)] transition hover:text-[var(--color-text)]"
             >
               <ArrowLeft size={14} /> 返回场景列表
             </button>
           </div>
           {!sceneDetail ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">场景详情加载中...</div>
+            <div className="card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 text-sm text-[var(--color-text-weak)] shadow-sm">场景详情加载中...</div>
           ) : (
             <>
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-bold text-slate-800">场景信息</h3>
+                  <h3 className="font-bold text-[var(--color-text)]">场景信息</h3>
                   <button
                     type="button"
                     onClick={() => void removeScene(sceneDetail.scene_id)}
-                    className="btn-top-danger"
+                    className="btn-danger"
                   >
                     <Trash2 size={14} /> 删除场景
                   </button>
@@ -568,9 +568,9 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                     value={editSceneForm.name}
                     onChange={(e) => setEditSceneForm((prev) => ({ ...prev, name: e.target.value }))}
                     placeholder="场景名称"
-                    className="h-10 rounded-xl border border-slate-200 px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    className="h-10 rounded-xl border border-[var(--color-border)] px-3 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                   />
-                  <div className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 font-mono text-sm text-slate-500">
+                  <div className="inline-flex h-10 items-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3 font-mono text-sm text-[var(--color-text-weak)]">
                     {sceneDetail.scene_id}
                   </div>
                 </div>
@@ -578,27 +578,27 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                   value={editSceneForm.description}
                   onChange={(e) => setEditSceneForm((prev) => ({ ...prev, description: e.target.value }))}
                   rows={3}
-                  className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  className="mt-3 w-full rounded-xl border border-[var(--color-border)] px-3 py-2 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                   placeholder="场景描述"
                 />
                 <button
                   type="button"
                   onClick={() => void saveSceneMeta()}
                   disabled={saving}
-                  className="btn-top-primary mt-3"
+                  className="btn-primary mt-3"
                 >
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} 保存场景信息
                 </button>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-bold text-slate-800">资产选择（场景隔离）</h3>
+                  <h3 className="font-bold text-[var(--color-text)]">资产选择（场景隔离）</h3>
                   <button
                     type="button"
                     onClick={() => void saveSceneAssets()}
                     disabled={saving}
-                    className="btn-top-primary"
+                    className="btn-primary"
                   >
                     {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} 保存资产
                   </button>
@@ -607,7 +607,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                   {allAssets.map((asset) => {
                     const checked = selectedAssetIds.includes(asset.id);
                     return (
-                      <label key={asset.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                      <label key={asset.id} className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3 py-2 text-sm">
                         <input
                           type="checkbox"
                           checked={checked}
@@ -619,29 +619,29 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                             }
                           }}
                         />
-                        <span className="font-mono text-xs text-slate-500">{asset.id}</span>
-                        <span className="font-semibold text-slate-700">{asset.name}</span>
+                        <span className="font-mono text-xs text-[var(--color-text-weak)]">{asset.id}</span>
+                        <span className="font-semibold text-[var(--color-text)]">{asset.name}</span>
                       </label>
                     );
                   })}
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-bold text-slate-800">上下游关系（图数据库）</h3>
+                  <h3 className="font-bold text-[var(--color-text)]">上下游关系（图数据库）</h3>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setShowGraphModal(true)}
-                      className="btn-top-outline"
+                      className="btn-secondary"
                     >
                       查看图结构
                     </button>
                     <button
                       type="button"
                       onClick={addRelation}
-                      className="btn-top-outline"
+                      className="btn-secondary"
                     >
                       <Plus size={14} /> 新增关系
                     </button>
@@ -649,7 +649,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                       type="button"
                       onClick={() => void saveSceneRelations()}
                       disabled={saving}
-                      className="btn-top-primary"
+                      className="btn-primary"
                     >
                       {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} 保存关系
                     </button>
@@ -657,13 +657,13 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                 </div>
 
                 {selectedAssets.length < 2 ? (
-                  <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">当前场景资产不足 2 个，无法配置上下游关系。</p>
+                  <p className="rounded-xl bg-[var(--color-surface-raised)] p-3 text-sm text-[var(--color-text-weak)]">当前场景资产不足 2 个，无法配置上下游关系。</p>
                 ) : relationItems.length === 0 ? (
-                  <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">暂无关系，点击“新增关系”开始配置。</p>
+                  <p className="rounded-xl bg-[var(--color-surface-raised)] p-3 text-sm text-[var(--color-text-weak)]">暂无关系，点击“新增关系”开始配置。</p>
                 ) : (
                   <div className="space-y-2">
                     {relationItems.map((item, idx) => (
-                      <div key={`${item.source_asset_id}-${item.target_asset_id}-${idx}`} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-12">
+                      <div key={`${item.source_asset_id}-${item.target_asset_id}-${idx}`} className="grid grid-cols-1 gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-3 md:grid-cols-12">
                         <select
                           value={item.source_asset_id}
                           onChange={(e) =>
@@ -671,7 +671,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                               prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, source_asset_id: e.target.value } : row)),
                             )
                           }
-                          className="h-10 rounded-xl border border-slate-200 bg-white px-2 text-sm outline-none md:col-span-4"
+                          className="h-10 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm outline-none md:col-span-4"
                         >
                           {selectedAssets.map((asset) => (
                             <option key={`src-${asset.id}`} value={asset.id}>
@@ -686,7 +686,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                               prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, relation_type: e.target.value } : row)),
                             )
                           }
-                          className="h-10 rounded-xl border border-slate-200 bg-white px-2 text-sm outline-none md:col-span-3"
+                          className="h-10 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm outline-none md:col-span-3"
                         >
                           <option value="upstream">{relationTypeLabel("upstream")}</option>
                           <option value="downstream">{relationTypeLabel("downstream")}</option>
@@ -700,7 +700,7 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
                               prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, target_asset_id: e.target.value } : row)),
                             )
                           }
-                          className="h-10 rounded-xl border border-slate-200 bg-white px-2 text-sm outline-none md:col-span-4"
+                          className="h-10 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm outline-none md:col-span-4"
                         >
                           {selectedAssets.map((asset) => (
                             <option key={`dst-${asset.id}`} value={asset.id}>
@@ -727,16 +727,16 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
 
       {showGraphModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-          <div className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+          <div className="card w-full max-w-4xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-3">
               <div>
-                <h3 className="font-bold text-slate-800">场景上下游图结构</h3>
-                <p className="text-xs text-slate-500">基于当前场景已选资产和关系配置渲染</p>
+                <h3 className="font-bold text-[var(--color-text)]">场景上下游图结构</h3>
+                <p className="text-xs text-[var(--color-text-weak)]">基于当前场景已选资产和关系配置渲染</p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowGraphModal(false)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] text-[var(--color-text-weak)] transition hover:bg-[var(--color-surface-raised)]"
               >
                 <X size={16} />
               </button>
@@ -744,11 +744,11 @@ export default function SceneConfigPanel({ apiBaseUrl, token }: SceneConfigPanel
 
             <div className="p-4">
               {graphNodes.length === 0 ? (
-                <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">当前场景还未选择资产。</p>
+                <p className="rounded-xl bg-[var(--color-surface-raised)] p-4 text-sm text-[var(--color-text-weak)]">当前场景还未选择资产。</p>
               ) : relationItems.length === 0 ? (
-                <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">当前场景还没有配置上下游关系。</p>
+                <p className="rounded-xl bg-[var(--color-surface-raised)] p-4 text-sm text-[var(--color-text-weak)]">当前场景还没有配置上下游关系。</p>
               ) : (
-                <div className="overflow-auto rounded-xl border border-slate-200 bg-slate-50">
+                <div className="overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)]">
                   <svg width={680} height={440} viewBox="0 0 680 440" className="block min-w-[680px]">
                     <defs>
                       <marker id="arrowHead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">

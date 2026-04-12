@@ -139,12 +139,12 @@ export default function ResourceManagementPanel({ apiBaseUrl, token, onPreviewMo
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-50/30 p-6 md:p-8">
+    <div className="h-full overflow-y-auto bg-[var(--color-surface-raised)] p-6 md:p-8">
       <header className="mb-6 flex flex-wrap items-center justify-end gap-2">
-        <button type="button" onClick={() => void fetchResources()} className="btn-top-outline gap-2">
+        <button type="button" onClick={() => void fetchResources()} className="btn-secondary gap-2">
           <Database size={16} /> 刷新资源
         </button>
-        <label className="btn-top-primary cursor-pointer gap-2">
+        <label className="btn-primary cursor-pointer gap-2">
           {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
           上传模型
           <input
@@ -165,22 +165,22 @@ export default function ResourceManagementPanel({ apiBaseUrl, token, onPreviewMo
       {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
       {success && <p className="mb-3 text-sm text-emerald-600">{success}</p>}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="card">
         <table className="w-full border-collapse text-left">
           <thead>
-            <tr className="bg-slate-50">
-              <th className="table-th">资源名</th>
-              <th className="table-th">原始文件</th>
-              <th className="table-th">大小</th>
-              <th className="table-th">对象键</th>
-              <th className="table-th">URL</th>
-              <th className="table-th">操作</th>
+            <tr className="bg-[var(--color-surface-raised)]">
+              <th className="table-header">资源名</th>
+              <th className="table-header">原始文件</th>
+              <th className="table-header">大小</th>
+              <th className="table-header">对象键</th>
+              <th className="table-header">URL</th>
+              <th className="table-header">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
+                <td colSpan={6} className="px-4 py-10 text-center text-sm text-[var(--color-text-weak)]">
                   <span className="inline-flex items-center gap-2">
                     <Loader2 size={14} className="animate-spin text-blue-600" /> 资源加载中...
                   </span>
@@ -188,23 +188,23 @@ export default function ResourceManagementPanel({ apiBaseUrl, token, onPreviewMo
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
+                <td colSpan={6} className="px-4 py-10 text-center text-sm text-[var(--color-text-weak)]">
                   暂无资源
                 </td>
               </tr>
             ) : (
               items.map((item) => (
                 <tr key={item.id}>
-                  <td className="table-td text-sm font-semibold text-slate-700">{item.name}</td>
-                  <td className="table-td text-xs text-slate-600">{item.original_file_name}</td>
-                  <td className="table-td text-xs text-slate-600">{formatSize(item.file_size)}</td>
-                  <td className="table-td max-w-[220px] truncate font-mono text-[11px] text-slate-600" title={item.object_key}>
+                  <td className="table-cell text-sm font-semibold text-[var(--color-text)]">{item.name}</td>
+                  <td className="table-cell text-xs text-[var(--color-text-weak)]">{item.original_file_name}</td>
+                  <td className="table-cell text-xs text-[var(--color-text-weak)]">{formatSize(item.file_size)}</td>
+                  <td className="table-cell max-w-[220px] truncate font-mono text-[11px] text-[var(--color-text-weak)]" title={item.object_key}>
                     {item.object_key}
                   </td>
-                  <td className="table-td max-w-[220px] truncate font-mono text-[11px] text-slate-600" title={item.url}>
+                  <td className="table-cell max-w-[220px] truncate font-mono text-[11px] text-[var(--color-text-weak)]" title={item.url}>
                     {item.url}
                   </td>
-                  <td className="table-td">
+                  <td className="table-cell">
                     <div className="flex items-center justify-center gap-2">
                       <button
                         type="button"
@@ -220,7 +220,7 @@ export default function ResourceManagementPanel({ apiBaseUrl, token, onPreviewMo
                           void navigator.clipboard.writeText(item.url);
                           setSuccess(`已复制资源 URL：${item.original_file_name}`);
                         }}
-                        className="btn-top-outline"
+                        className="btn-secondary"
                       >
                         <Copy size={13} />
                       </button>

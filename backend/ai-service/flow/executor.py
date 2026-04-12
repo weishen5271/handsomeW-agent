@@ -279,7 +279,7 @@ class FlowExecutor:
         try:
             import paho.mqtt.client as mqtt
         except ImportError as exc:
-            raise RuntimeError("当前环境缺少 paho-mqtt，请先安装 backend/requirements.txt 中新增的依赖") from exc
+            raise RuntimeError("当前环境缺少 paho-mqtt，请先安装 backend/ai-service/requirements.txt 中新增的依赖") from exc
 
         broker_url = str(config.get("broker_url") or "").strip()
         topic = str(config.get("topic") or "").strip()

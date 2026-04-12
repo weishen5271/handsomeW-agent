@@ -2,15 +2,17 @@
 
 [中文文档](./README.zh-CN.md)
 
-Lightweight Agent web app with:
-- `backend`: FastAPI backend (auth, user management, LLM config, agent chat, GraphRAG integration)
+Lightweight Agent web app evolving toward a dual-backend architecture:
+- `backend/system-service`: Spring Boot system service for auth, users, digital twin, workflow orchestration
+- `backend/ai-service`: Python AI service for agent runtime, tools, and GraphRAG
 - `front`: React + Vite frontend (management UI + chat UI)
 
 ---
 
 ## 1. Project Layout
 
-- `backend/`: FastAPI backend
+- `backend/system-service/`: Spring Boot system service
+- `backend/ai-service/`: Python AI service, currently still contains some legacy system APIs for backward compatibility
 - `front/`: React + Vite frontend
 - `workspace/`: runtime workspace files
 
@@ -21,12 +23,12 @@ Lightweight Agent web app with:
 - PostgreSQL `14+`
 - (Optional) Neo4j + Milvus for GraphRAG
 
-## 3. Backend Setup (Dev)
+## 3. AI Service Setup (Dev)
 
 1. Install dependencies:
 
 ```bash
-pip install -r backend/requirements.txt
+pip install -r backend/ai-service/requirements.txt
 ```
 
 2. Create `backend/.env`:
@@ -45,10 +47,10 @@ CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:
 # GRAPH_RAG_ENV_FILE=/absolute/path/to/.env
 ```
 
-3. Run backend from repo root:
+3. Run AI service from repo root:
 
 ```bash
-uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
+uvicorn main:app --app-dir backend/ai-service --host 127.0.0.1 --port 8000 --reload
 ```
 
 4. Verify:
@@ -58,7 +60,40 @@ uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
 
 > The app auto-creates tables on startup, but the PostgreSQL database itself must already exist.
 
-## 4. Frontend Setup (Dev)
+## 4. System Service Setup (Dev)
+
+Requirements:
+
+- Java `17+`
+- Maven `3.9+`
+
+Run the Spring Boot system service:
+
+```bash
+cd backend/system-service
+mvn spring-boot:run
+```
+
+Optional local env file:
+
+```bash
+cp backend/system-service/.env.example backend/system-service/.env
+```
+
+Verify:
+
+- Health: `http://127.0.0.1:8081/health`
+- System API health: `http://127.0.0.1:8081/api/system/health`
+
+The current codebase includes the Spring Boot system-service skeleton and an AI-service client for the next migration steps. Business APIs are still being moved out of Python incrementally.
+The frontend now targets `system-service` as the default `/api` entrypoint, and `system-service` proxies AI endpoints such as `/agents/**`, `/llm-config`, and selected legacy capability routes to `ai-service`.
+For local runs with concrete infrastructure values, you can use [application-local.yml](/Users/shenwei/PycharmProjects/handsomeW-agent/backend/system-service/src/main/resources/application-local.yml):
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=local
+```
+
+## 5. Frontend Setup (Dev)
 
 1. Install dependencies:
 
@@ -81,12 +116,12 @@ npm run dev
 
 Default URL: `http://127.0.0.1:5173`
 
-## 5. Production Deployment
+## 6. Production Deployment
 
-- Backend:
+- AI Service:
 
 ```bash
-uvicorn main:app --app-dir backend --host 0.0.0.0 --port 8000
+uvicorn main:app --app-dir backend/ai-service --host 0.0.0.0 --port 8000
 ```
 
 - Frontend build:
@@ -121,6 +156,14 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
+
+    location /system-api/ {
+        proxy_pass http://127.0.0.1:8081/api/system/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
 ```
 
@@ -130,16 +173,17 @@ If `/api` prefix is used, set:
 VITE_API_BASE_URL=https://your-domain.com/api
 ```
 
-## 6. Docker Compose Deployment
+## 7. Docker Compose Deployment
 
 The repository now includes:
 
 - `docker-compose.yml`
-- `backend/Dockerfile`
+- `backend/ai-service/Dockerfile`
+- `backend/system-service/Dockerfile`
 - `front/Dockerfile`
 - `front/nginx.conf`
 
-Start all services (frontend + backend + PostgreSQL):
+Start all services (frontend + ai-service + system-service + PostgreSQL):
 
 ```bash
 docker compose up -d --build
@@ -148,8 +192,10 @@ docker compose up -d --build
 Access:
 
 - Frontend: `http://127.0.0.1:8080`
-- Backend health: `http://127.0.0.1:8000/health`
-- API docs: `http://127.0.0.1:8000/docs`
+- AI service health: `http://127.0.0.1:8000/health`
+- AI service docs: `http://127.0.0.1:8000/docs`
+- System service health: `http://127.0.0.1:8081/health`
+- System API health: `http://127.0.0.1:8081/api/system/health`
 
 Stop:
 
@@ -163,7 +209,7 @@ Stop and remove DB volume:
 docker compose down -v
 ```
 
-## 7. Optional GraphRAG Environment Variables
+## 8. Optional GraphRAG Environment Variables
 
 Set these when GraphRAG is enabled:
 

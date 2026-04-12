@@ -7,10 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from api.auth import router as auth_router
+from api.ai_digital_twin_routes import router as ai_digital_twin_router
 from api.alarm_flow_routes import router as alarm_flow_router
-from api.digital_twin_routes import router as digital_twin_router
 from api.llm_config import router as llm_config_router
 from api.routes import router as agent_router
 from api.alarm_flow_store import init_alarm_flow_db
@@ -18,7 +19,12 @@ from api.digital_twin_store import init_digital_twin_db
 from api.user_store import init_db
 from flow.scheduler import alarm_flow_scheduler
 
-app = FastAPI(title="handsomeW-agent API", version="0.1.0")
+app = FastAPI(
+    title="handsomeW-agent AI Service",
+    version="0.1.0",
+    description="Python AI service for agent runtime, tools, and GraphRAG. "
+    "System-domain APIs remain temporarily for backward compatibility during migration.",
+)
 
 
 def _parse_cors_origins() -> list[str]:
@@ -44,7 +50,12 @@ app.add_middleware(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "service": "ai-service"}
+
+
+@app.get("/ai/health")
+async def ai_health() -> dict[str, str]:
+    return {"status": "ok", "service": "ai-service"}
 
 
 @app.on_event("startup")
@@ -58,7 +69,7 @@ async def startup() -> None:
 app.include_router(auth_router)
 app.include_router(llm_config_router)
 app.include_router(agent_router)
-app.include_router(digital_twin_router)
+app.include_router(ai_digital_twin_router)
 app.include_router(alarm_flow_router)
 
 

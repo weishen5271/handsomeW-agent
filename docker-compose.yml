@@ -17,11 +17,11 @@ services:
       timeout: 5s
       retries: 10
 
-  backend:
+  ai-service:
     build:
       context: .
-      dockerfile: backend/Dockerfile
-    container_name: handsomew-agent-backend
+      dockerfile: backend/ai-service/Dockerfile
+    container_name: handsomew-agent-ai-service
     restart: unless-stopped
     depends_on:
       db:
@@ -43,6 +43,25 @@ services:
       MINIO_USE_PRESIGNED_URL: "false"
     ports:
       - "8000:8000"
+
+  system-service:
+    build:
+      context: .
+      dockerfile: backend/system-service/Dockerfile
+    container_name: handsomew-agent-system-service
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    environment:
+      AI_SERVICE_BASE_URL: http://ai-service:8000
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/handsomew_agent
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    ports:
+      - "8081:8081"
 
   minio:
     image: minio/minio:latest
@@ -67,7 +86,8 @@ services:
     container_name: handsomew-agent-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      - ai-service
+      - system-service
     ports:
       - "8080:80"
 

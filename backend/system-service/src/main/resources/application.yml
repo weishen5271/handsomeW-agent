@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: system-service
+    version: 0.1.0
+  datasource:
+    url: jdbc:postgresql://${handsomew.postgresql.host}:${handsomew.postgresql.port}/${handsomew.postgresql.database}
+    username: ${handsomew.postgresql.username}
+    password: ${handsomew.postgresql.password}
+    driver-class-name: org.postgresql.Driver
+
+server:
+  port: ${SERVER_PORT:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+handsomew:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080,http://localhost:3000,http://127.0.0.1:3000}
+  ai-service:
+    base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
+    internal-token: ${AI_SERVICE_INTERNAL_TOKEN:}
+  postgresql:
+    host: ${POSTGRES_HOST:127.0.0.1}
+    port: ${POSTGRES_PORT:5432}
+    database: ${POSTGRES_DATABASE:handsomew_agent}
+    username: ${POSTGRES_USERNAME:postgres}
+    password: ${POSTGRES_PASSWORD:postgres}
+  minio:
+    endpoint: ${MINIO_ENDPOINT:127.0.0.1:9000}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    bucket: ${MINIO_BUCKET:models}
+    secure: ${MINIO_SECURE:false}
+    public-endpoint: ${MINIO_PUBLIC_ENDPOINT:127.0.0.1:9000}
+    presigned-expire-seconds: ${MINIO_PRESIGNED_EXPIRE_SECONDS:3600}

@@ -2,15 +2,17 @@
 
 [English Documentation](./README.md)
 
-轻量级的 Agent Web 应用，包含：
-- `backend`：FastAPI 后端（认证、用户管理、LLM 配置、Agent 对话、GraphRAG 集成）
+轻量级的 Agent Web 应用，正在演进为双后端架构：
+- `backend/system-service`：Spring Boot 系统服务，承载认证、用户、数字孪生、工作流编排等系统业务
+- `backend/ai-service`：Python AI 服务，承载 Agent、Tool、GraphRAG 等智能能力
 - `front`：React + Vite 前端（管理页 + 聊天页）
 
 ---
 
 ## 1. 项目结构
 
-- `backend/`：Python 后端
+- `backend/system-service/`：Spring Boot 系统服务
+- `backend/ai-service/`：Python AI 服务；当前仍保留部分旧系统接口以兼容存量前端
 - `front/`：前端工程（React + Vite）
 - `workspace/`：运行时工作区相关文件
 
@@ -21,12 +23,12 @@
 - PostgreSQL `14+`
 - （可选）Neo4j + Milvus（启用 GraphRAG 时需要）
 
-## 3. 后端开发环境部署
+## 3. AI 服务开发环境部署
 
 1. 安装依赖
 
 ```bash
-pip install -r backend/requirements.txt
+pip install -r backend/ai-service/requirements.txt
 ```
 
 2. 配置环境变量（新建 `backend/.env`）
@@ -53,10 +55,10 @@ CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:
 # GRAPH_RAG_ENV_FILE=/absolute/path/to/.env
 ```
 
-3. 启动后端（在仓库根目录执行）
+3. 启动 AI 服务（在仓库根目录执行）
 
 ```bash
-uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
+uvicorn main:app --app-dir backend/ai-service --host 127.0.0.1 --port 8000 --reload
 ```
 
 4. 验证
@@ -64,9 +66,42 @@ uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
 - 健康检查：`http://127.0.0.1:8000/health`
 - API 文档：`http://127.0.0.1:8000/docs`
 
-> 注意：后端启动时会自动初始化表（`users`、`sessions`、`user_llm_configs`），但不会自动创建 PostgreSQL 数据库本身，请先手动创建 `handsomew_agent` 数据库。
+> 注意：当前 Python 服务仍会自动初始化一部分历史表结构，这是为兼容迁移过程保留的能力；后续系统业务会逐步迁移到 `system-service`。
 
-## 4. 前端开发环境部署
+## 4. System Service 开发环境部署
+
+环境要求：
+
+- Java `17+`
+- Maven `3.9+`
+
+启动 Spring Boot 系统服务：
+
+```bash
+cd backend/system-service
+mvn spring-boot:run
+```
+
+可选：先复制本地环境配置文件
+
+```bash
+cp backend/system-service/.env.example backend/system-service/.env
+```
+
+验证：
+
+- 健康检查：`http://127.0.0.1:8081/health`
+- 系统 API 健康检查：`http://127.0.0.1:8081/api/system/health`
+
+当前仓库已具备 `system-service` 骨架与 AI 服务客户端，后续可继续把认证、用户、数字孪生等业务接口逐步迁入 Java。
+当前前端默认已切到 `system-service` 作为 `/api` 入口，`system-service` 会继续代理 `/agents/**`、`/llm-config` 以及部分仍保留在 Python 的能力型接口。
+如果需要直接使用本地实际配置，可启用 [application-local.yml](/Users/shenwei/PycharmProjects/handsomeW-agent/backend/system-service/src/main/resources/application-local.yml)：
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=local
+```
+
+## 5. 前端开发环境部署
 
 1. 安装依赖
 
@@ -93,12 +128,12 @@ npm run dev
 
 - Vite 默认地址：`http://127.0.0.1:5173`
 
-## 5. 生产部署（前后端）
+## 6. 生产部署（前后端）
 
-- 后端：
+- AI 服务：
 
 ```bash
-uvicorn main:app --app-dir backend --host 0.0.0.0 --port 8000
+uvicorn main:app --app-dir backend/ai-service --host 0.0.0.0 --port 8000
 ```
 
 - 前端构建：
@@ -133,6 +168,14 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
+
+    location /system-api/ {
+        proxy_pass http://127.0.0.1:8081/api/system/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
 ```
 
@@ -142,16 +185,17 @@ server {
 VITE_API_BASE_URL=https://your-domain.com/api
 ```
 
-## 6. Docker Compose 部署
+## 7. Docker Compose 部署
 
 仓库已新增以下文件：
 
 - `docker-compose.yml`
-- `backend/Dockerfile`
+- `backend/ai-service/Dockerfile`
+- `backend/system-service/Dockerfile`
 - `front/Dockerfile`
 - `front/nginx.conf`
 
-一键启动前后端与 PostgreSQL：
+一键启动前端、AI 服务、System Service 与 PostgreSQL：
 
 ```bash
 docker compose up -d --build
@@ -160,8 +204,10 @@ docker compose up -d --build
 访问地址：
 
 - 前端：`http://127.0.0.1:8080`
-- 后端健康检查：`http://127.0.0.1:8000/health`
-- API 文档：`http://127.0.0.1:8000/docs`
+- AI 服务健康检查：`http://127.0.0.1:8000/health`
+- AI 服务 API 文档：`http://127.0.0.1:8000/docs`
+- System Service 健康检查：`http://127.0.0.1:8081/health`
+- System API 健康检查：`http://127.0.0.1:8081/api/system/health`
 
 停止服务：
 
@@ -175,7 +221,7 @@ docker compose down
 docker compose down -v
 ```
 
-## 7. GraphRAG 相关变量（可选）
+## 8. GraphRAG 相关变量（可选）
 
 启用 GraphRAG 时，需在 `backend/.env`（或 `GRAPH_RAG_ENV_FILE` 指向的 env）中补充：
 

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
 from api.agent_service import AgentService
@@ -12,8 +12,19 @@ from api.schemas import (
     AgentType,
     ChatMemoryResponse,
     ChatSessionResponse,
+    ContextDocResponse,
+    TogglePinResponse,
 )
-from api.user_store import create_chat_session, get_chat_session, list_chat_memories, list_chat_sessions
+from api.user_store import (
+    add_context_doc,
+    create_chat_session,
+    delete_context_doc,
+    get_chat_session,
+    list_chat_memories,
+    list_chat_sessions,
+    list_context_docs,
+    toggle_pin_memory,
+)
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 _UI_FILE = Path(__file__).resolve().parents[2] / "front" / "chat_ui.html"
@@ -143,6 +154,77 @@ async def chat_stream(
 ) -> StreamingResponse:
     service = AgentService()
     return _build_streaming_response(service, agent_type, request, current_user["id"])
+
+
+@router.post("/sessions/{session_id}/messages/{memory_id}/pin", response_model=TogglePinResponse)
+async def toggle_pin(
+    session_id: str,
+    memory_id: int,
+    current_user: dict = Depends(get_current_user),
+) -> TogglePinResponse:
+    session = get_chat_session(user_id=current_user["id"], session_id=session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    result = toggle_pin_memory(user_id=current_user["id"], memory_id=memory_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    return TogglePinResponse(**result)
+
+
+@router.get("/sessions/{session_id}/context-docs", response_model=list[ContextDocResponse])
+async def get_context_docs(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+) -> list[ContextDocResponse]:
+    session = get_chat_session(user_id=current_user["id"], session_id=session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    docs = list_context_docs(user_id=current_user["id"], session_id=session_id)
+    return [ContextDocResponse(**d) for d in docs]
+
+
+@router.post("/sessions/{session_id}/context-docs", response_model=ContextDocResponse)
+async def upload_context_doc(
+    session_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+) -> ContextDocResponse:
+    session = get_chat_session(user_id=current_user["id"], session_id=session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    MAX_SIZE = 2 * 1024 * 1024  # 2MB
+    raw = await file.read()
+    if len(raw) > MAX_SIZE:
+        raise HTTPException(status_code=413, detail="文件大小不能超过 2MB")
+
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="仅支持 UTF-8 文本文件")
+
+    doc = add_context_doc(
+        user_id=current_user["id"],
+        session_id=session_id,
+        file_name=file.filename or "unknown.txt",
+        content=content,
+    )
+    return ContextDocResponse(**doc)
+
+
+@router.delete("/sessions/{session_id}/context-docs/{doc_id}")
+async def remove_context_doc(
+    session_id: str,
+    doc_id: int,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    session = get_chat_session(user_id=current_user["id"], session_id=session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    deleted = delete_context_doc(user_id=current_user["id"], doc_id=doc_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return {"status": "deleted"}
 
 
 @router.get("/{agent_type}/chat/stream")

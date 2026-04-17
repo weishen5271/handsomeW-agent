@@ -17,15 +17,33 @@ export type UserRole = "admin" | "user";
 
 export type ChatMessage = {
   id: string;
+  memoryId?: number;
   role: ChatRole;
   text: string;
   imageUrl?: string;
+  pinned?: boolean;
   timestamp: string;
 };
 
 export type StreamState = {
   loading: boolean;
   label: "正在思考" | "正在合成图像" | null;
+};
+
+export type ThinkingStepStatus = "running" | "done" | "error";
+
+export type ThinkingStep = {
+  id: string;
+  type: "iteration" | "tool_call" | "tool_result";
+  status: ThinkingStepStatus;
+  iteration: number;
+  toolName?: string;
+  toolCallId?: string;
+  arguments?: Record<string, unknown>;
+  content?: string;
+  isError?: boolean;
+  durationMs?: number;
+  timestamp: number;
 };
 
 export type StreamEvent = {
@@ -59,6 +77,21 @@ export type AgentMemory = {
   session_id: string;
   role: string;
   content: string;
+  pinned: boolean;
+  created_at: string;
+};
+
+export type TokenUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+};
+
+export type ContextDoc = {
+  id: number;
+  session_id: string;
+  file_name: string;
+  char_count: number;
   created_at: string;
 };
 

@@ -441,7 +441,7 @@ export default function App() {
     if (!content || chat.streamState.loading) return;
 
     appendMessage("user", content);
-    setChatState({ input: "", draft: "", streamState: { loading: true, label: "正在思考" } });
+    setChatState({ input: "", draft: "", thinkingSteps: [], streamState: { loading: true, label: "正在思考" } });
 
     try {
       let resolvedSessionId = chat.chatSessionId;
@@ -495,12 +495,65 @@ export default function App() {
                 setChatState({ draft: text });
               }
             }
+            if (event.eventType === "iteration_start") {
+              const iter = Number(event.payload.iteration ?? 1);
+              const step = {
+                id: crypto.randomUUID(),
+                type: "iteration" as const,
+                status: "running" as const,
+                iteration: iter,
+                timestamp: Date.now(),
+              };
+              const prev = useAppStore.getState().chat.thinkingSteps;
+              setChatState({ thinkingSteps: [...prev, step] });
+            }
             if (event.eventType === "tool_call") {
-              const toolCalls = event.payload.tool_calls;
+              const toolCalls = event.payload.tool_calls as Array<{
+                id: string;
+                name: string;
+                arguments: Record<string, unknown>;
+              }> | undefined;
+              const iter = Number(event.payload.iteration ?? 1);
               const rawText = JSON.stringify(toolCalls || "");
               if (rawText.toLowerCase().includes("image")) {
                 setChatState({ streamState: { loading: true, label: "正在合成图像" } });
               }
+              if (toolCalls) {
+                const newSteps = toolCalls.map((tc) => ({
+                  id: tc.id || crypto.randomUUID(),
+                  type: "tool_call" as const,
+                  status: "running" as const,
+                  iteration: iter,
+                  toolName: tc.name,
+                  toolCallId: tc.id,
+                  arguments: tc.arguments,
+                  timestamp: Date.now(),
+                }));
+                const prev = useAppStore.getState().chat.thinkingSteps;
+                setChatState({ thinkingSteps: [...prev, ...newSteps] });
+              }
+            }
+            if (event.eventType === "tool_result") {
+              const toolCallId = String(event.payload.tool_call_id ?? "");
+              const resultStep = {
+                id: crypto.randomUUID(),
+                type: "tool_result" as const,
+                status: (event.payload.is_error ? "error" : "done") as "error" | "done",
+                iteration: Number(event.payload.iteration ?? 1),
+                toolName: String(event.payload.tool_name ?? ""),
+                toolCallId,
+                content: String(event.payload.content ?? ""),
+                isError: Boolean(event.payload.is_error),
+                durationMs: event.payload.duration_ms as number | undefined,
+                timestamp: Date.now(),
+              };
+              const prev = useAppStore.getState().chat.thinkingSteps;
+              const updated = prev.map((s) =>
+                s.type === "tool_call" && s.toolCallId === toolCallId
+                  ? { ...s, status: resultStep.status }
+                  : s,
+              );
+              setChatState({ thinkingSteps: [...updated, resultStep] });
             }
             if (event.eventType === "done") finalContent = String(event.payload.content ?? latestDraft ?? "");
             if (event.eventType === "error") {
@@ -756,6 +809,7 @@ export default function App() {
                 sessionsLoading={chat.sessionsLoading}
                 sessionsError={chat.sessionsError}
                 streamState={chat.streamState}
+                thinkingSteps={chat.thinkingSteps}
                 onInputChange={(value) => setChatState({ input: value })}
                 onSend={sendMessage}
                 onCreateSession={createNewSession}

@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   SkillShopItem,
   StreamState,
+  ThinkingStep,
   UserSkillConfig,
 } from "../types/app";
 
@@ -25,6 +26,7 @@ type ChatState = {
   input: string;
   draft: string;
   streamState: StreamState;
+  thinkingSteps: ThinkingStep[];
 };
 
 type UserManagementState = {
@@ -87,6 +89,7 @@ const initialChatState = (): ChatState => ({
   input: "",
   draft: "",
   streamState: { loading: false, label: null },
+  thinkingSteps: [],
 });
 
 const initialUserManagementState = (): UserManagementState => ({

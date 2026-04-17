@@ -28,6 +28,22 @@ export type StreamState = {
   label: "正在思考" | "正在合成图像" | null;
 };
 
+export type ThinkingStepStatus = "running" | "done" | "error";
+
+export type ThinkingStep = {
+  id: string;
+  type: "iteration" | "tool_call" | "tool_result";
+  status: ThinkingStepStatus;
+  iteration: number;
+  toolName?: string;
+  toolCallId?: string;
+  arguments?: Record<string, unknown>;
+  content?: string;
+  isError?: boolean;
+  durationMs?: number;
+  timestamp: number;
+};
+
 export type StreamEvent = {
   eventType: string;
   payload: Record<string, unknown>;

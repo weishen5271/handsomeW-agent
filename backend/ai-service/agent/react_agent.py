@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 from typing import Callable, Optional, Tuple
 import json
 import re
+import time
 
 from base_agent import BaseAgent
 from core.base import LLMResponse
@@ -125,15 +126,18 @@ class ReactAgent(BaseAgent):
                     event_handler,
                     "tool_call",
                     {
+                        "iteration": iteration + 1,
                         "tool_calls": [
                             {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                             for tc in llm_response.tool_calls
-                        ]
+                        ],
                     },
                 )
 
+                tool_start_time = time.monotonic()
                 tool_response = self.context.execute_tool(llm_response.tool_calls)
                 for one in tool_response:
+                    tool_duration_ms = int((time.monotonic() - tool_start_time) * 1000)
                     self.context.add_message(
                         Message(
                             role="tool",
@@ -152,10 +156,12 @@ class ReactAgent(BaseAgent):
                         event_handler,
                         "tool_result",
                         {
+                            "iteration": iteration + 1,
                             "tool_name": one.get("tool_name"),
                             "tool_call_id": one.get("tool_call_id"),
                             "content": one.get("content", ""),
                             "is_error": one.get("is_error", False),
+                            "duration_ms": tool_duration_ms,
                         },
                     )
 

@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import type { RefObject } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Bot, Image, Loader2, Plus, Send, User } from "lucide-react";
-import type { AgentSession, ChatMessage, StreamState } from "../types/app";
+import type { AgentSession, ChatMessage, StreamState, ThinkingStep } from "../types/app";
+import ThinkingPanel from "../components/ThinkingPanel";
 
 type ChatViewProps = {
   chatRef: RefObject<HTMLDivElement>;
@@ -14,6 +15,7 @@ type ChatViewProps = {
   sessionsLoading: boolean;
   sessionsError: string;
   streamState: StreamState;
+  thinkingSteps: ThinkingStep[];
   onInputChange: (value: string) => void;
   onSend: () => void | Promise<void>;
   onCreateSession: () => void | Promise<void>;
@@ -33,6 +35,7 @@ export default function ChatView({
   sessionsLoading,
   sessionsError,
   streamState,
+  thinkingSteps,
   onInputChange,
   onSend,
   onCreateSession,
@@ -93,6 +96,10 @@ export default function ChatView({
               );
             })}
           </AnimatePresence>
+
+          {(thinkingSteps.length > 0 || streamState.loading) && (
+            <ThinkingPanel steps={thinkingSteps} loading={streamState.loading} />
+          )}
 
           {draft && (
             <motion.article initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3">

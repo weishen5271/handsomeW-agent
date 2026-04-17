@@ -65,6 +65,8 @@ class ReactAgent(BaseAgent):
         self.context.add_message(Message(role="user", content=input_str))
 
         llm_response: Optional[LLMResponse] = None
+        # Accumulate token usage across iterations
+        total_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         for iteration in range(max_iterations):
             if verbose:
                 print(f"{green} iteration {iteration + 1}")
@@ -82,6 +84,11 @@ class ReactAgent(BaseAgent):
             if llm_response is None:
                 self._emit_event(event_handler, "error", {"message": "模型未返回结果"})
                 return None
+
+            # Accumulate usage from this iteration
+            if llm_response.usage:
+                for key in total_usage:
+                    total_usage[key] += llm_response.usage.get(key, 0)
 
             if verbose:
                 print(f"{yellow} llm response: {llm_response.content}")
@@ -176,7 +183,7 @@ class ReactAgent(BaseAgent):
                     {
                         "content": llm_response.content or "",
                         "finish_reason": llm_response.finish_reason or "stop",
-                        "usage": llm_response.usage or {},
+                        "usage": total_usage,
                     },
                 )
                 return llm_response
@@ -187,7 +194,7 @@ class ReactAgent(BaseAgent):
             {
                 "content": llm_response.content if llm_response else "",
                 "finish_reason": llm_response.finish_reason if llm_response else "length",
-                "usage": llm_response.usage if llm_response else {},
+                "usage": total_usage,
             },
         )
         return llm_response

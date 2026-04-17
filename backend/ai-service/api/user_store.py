@@ -127,6 +127,33 @@ def init_db() -> None:
             ON user_skills(user_id, enabled)
             """
         )
+        # Add pinned column to chat_memories if not exists
+        conn.execute(
+            """
+            ALTER TABLE chat_memories
+            ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE
+            """
+        )
+        # Context documents table for per-session uploaded docs
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_context_docs (
+                id BIGSERIAL PRIMARY KEY,
+                session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                file_name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                char_count INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_session_context_docs_session
+            ON session_context_docs(session_id)
+            """
+        )
 
 
 def _hash_password(password: str, salt_hex: str) -> str:
@@ -609,3 +636,100 @@ def add_user_skill(
         if row["name"] == name:
             return row
     raise RuntimeError(f"保存用户技能失败: {name}")
+
+
+def toggle_pin_memory(user_id: int, memory_id: int) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, session_id, pinned FROM chat_memories WHERE id = %s AND user_id = %s",
+            (memory_id, user_id),
+        ).fetchone()
+        if row is None:
+            return None
+        new_pinned = not row["pinned"]
+        conn.execute(
+            "UPDATE chat_memories SET pinned = %s WHERE id = %s",
+            (new_pinned, memory_id),
+        )
+        return {"id": memory_id, "pinned": new_pinned}
+
+
+def list_pinned_memories(user_id: int, session_id: str) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, session_id, role, content, pinned, created_at
+            FROM chat_memories
+            WHERE user_id = %s AND session_id = %s AND pinned = TRUE
+            ORDER BY created_at ASC
+            """,
+            (user_id, session_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def add_context_doc(
+    user_id: int,
+    session_id: str,
+    file_name: str,
+    content: str,
+) -> dict[str, Any]:
+    now = _utc_now()
+    with _connect() as conn:
+        session_row = conn.execute(
+            "SELECT id FROM chat_sessions WHERE id = %s AND user_id = %s",
+            (session_id, user_id),
+        ).fetchone()
+        if session_row is None:
+            raise ValueError("会话不存在或无权限")
+        row = conn.execute(
+            """
+            INSERT INTO session_context_docs(session_id, user_id, file_name, content, char_count, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id, session_id, file_name, char_count, created_at
+            """,
+            (session_id, user_id, file_name, content, len(content), now),
+        ).fetchone()
+        return dict(row)
+
+
+def list_context_docs(user_id: int, session_id: str) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, session_id, file_name, char_count, created_at
+            FROM session_context_docs
+            WHERE user_id = %s AND session_id = %s
+            ORDER BY created_at ASC
+            """,
+            (user_id, session_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def delete_context_doc(user_id: int, doc_id: int) -> bool:
+    with _connect() as conn:
+        cursor = conn.execute(
+            "DELETE FROM session_context_docs WHERE id = %s AND user_id = %s",
+            (doc_id, user_id),
+        )
+        return cursor.rowcount > 0
+
+
+def get_context_docs_content(user_id: int, session_id: str) -> str:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT file_name, content
+            FROM session_context_docs
+            WHERE user_id = %s AND session_id = %s
+            ORDER BY created_at ASC
+            """,
+            (user_id, session_id),
+        ).fetchall()
+        if not rows:
+            return ""
+        parts = []
+        for r in rows:
+            parts.append(f"## 文档: {r['file_name']}\n{r['content']}")
+        return "\n\n".join(parts)

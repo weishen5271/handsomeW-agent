@@ -17,9 +17,11 @@ export type UserRole = "admin" | "user";
 
 export type ChatMessage = {
   id: string;
+  memoryId?: number;
   role: ChatRole;
   text: string;
   imageUrl?: string;
+  pinned?: boolean;
   timestamp: string;
 };
 
@@ -75,6 +77,21 @@ export type AgentMemory = {
   session_id: string;
   role: string;
   content: string;
+  pinned: boolean;
+  created_at: string;
+};
+
+export type TokenUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+};
+
+export type ContextDoc = {
+  id: number;
+  session_id: string;
+  file_name: string;
+  char_count: number;
   created_at: string;
 };
 

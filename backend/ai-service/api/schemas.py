@@ -48,6 +48,20 @@ class ChatMemoryResponse(BaseModel):
     session_id: str
     role: str
     content: str
+    pinned: bool = False
+    created_at: datetime | str
+
+
+class TogglePinResponse(BaseModel):
+    id: int
+    pinned: bool
+
+
+class ContextDocResponse(BaseModel):
+    id: int
+    session_id: str
+    file_name: str
+    char_count: int
     created_at: datetime | str
 
 

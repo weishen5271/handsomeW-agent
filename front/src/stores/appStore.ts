@@ -5,9 +5,11 @@ import type {
   AgentSession,
   AuthUser,
   ChatMessage,
+  ContextDoc,
   SkillShopItem,
   StreamState,
   ThinkingStep,
+  TokenUsage,
   UserSkillConfig,
 } from "../types/app";
 
@@ -27,6 +29,9 @@ type ChatState = {
   draft: string;
   streamState: StreamState;
   thinkingSteps: ThinkingStep[];
+  tokenUsage: TokenUsage;
+  contextDocs: ContextDoc[];
+  contextPanelOpen: boolean;
 };
 
 type UserManagementState = {
@@ -90,6 +95,9 @@ const initialChatState = (): ChatState => ({
   draft: "",
   streamState: { loading: false, label: null },
   thinkingSteps: [],
+  tokenUsage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+  contextDocs: [],
+  contextPanelOpen: false,
 });
 
 const initialUserManagementState = (): UserManagementState => ({

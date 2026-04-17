@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import type { RefObject } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Bot, Image, Loader2, Plus, Send, User } from "lucide-react";
-import type { AgentSession, ChatMessage, StreamState, ThinkingStep } from "../types/app";
+import { Bot, Image, Loader2, Pin, Plus, Send, User } from "lucide-react";
+import type { AgentSession, ChatMessage, ContextDoc, StreamState, ThinkingStep, TokenUsage } from "../types/app";
 import ThinkingPanel from "../components/ThinkingPanel";
+import ContextPanel from "../components/ContextPanel";
 
 type ChatViewProps = {
   chatRef: RefObject<HTMLDivElement>;
@@ -16,6 +17,13 @@ type ChatViewProps = {
   sessionsError: string;
   streamState: StreamState;
   thinkingSteps: ThinkingStep[];
+  tokenUsage: TokenUsage;
+  contextDocs: ContextDoc[];
+  contextPanelOpen: boolean;
+  onToggleContextPanel: () => void;
+  onTogglePin: (msg: ChatMessage) => void;
+  onUploadDoc: (file: File) => void;
+  onRemoveDoc: (docId: number) => void;
   onInputChange: (value: string) => void;
   onSend: () => void | Promise<void>;
   onCreateSession: () => void | Promise<void>;
@@ -36,6 +44,13 @@ export default function ChatView({
   sessionsError,
   streamState,
   thinkingSteps,
+  tokenUsage,
+  contextDocs,
+  contextPanelOpen,
+  onToggleContextPanel,
+  onTogglePin,
+  onUploadDoc,
+  onRemoveDoc,
   onInputChange,
   onSend,
   onCreateSession,
@@ -60,32 +75,49 @@ export default function ChatView({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 6 }}
                   transition={{ duration: 0.2, ease: "easeOut" }}
-                  className={`flex items-start gap-3 ${isUser ? "justify-end" : "justify-start"}`}
+                  className={`group flex items-start gap-3 ${isUser ? "justify-end" : "justify-start"}`}
                 >
                   {!isUser && (
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
                       <Bot size={16} />
                     </div>
                   )}
-                  <div
-                    className={`max-w-[82%] rounded-2xl border border-slate-200 px-4 py-3 shadow-sm ${
-                      isUser ? "bg-blue-600 text-white" : "bg-white text-slate-800"
-                    }`}
-                  >
-                    {msg.text && <p className="whitespace-pre-wrap leading-[1.6]">{msg.text}</p>}
-                    {msg.imageUrl && (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.96 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.22 }}
-                        className="mt-2 overflow-hidden rounded-2xl border border-slate-200"
+                  <div className="relative max-w-[82%]">
+                    <div
+                      className={`rounded-2xl border border-slate-200 px-4 py-3 shadow-sm ${
+                        isUser ? "bg-blue-600 text-white" : "bg-white text-slate-800"
+                      }`}
+                    >
+                      {msg.text && <p className="whitespace-pre-wrap leading-[1.6]">{msg.text}</p>}
+                      {msg.imageUrl && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.96 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.22 }}
+                          className="mt-2 overflow-hidden rounded-2xl border border-slate-200"
+                        >
+                          <img src={msg.imageUrl} alt="生成图像" className="h-auto w-full object-cover" />
+                        </motion.div>
+                      )}
+                      <p className={`mt-2 text-[11px] font-bold tracking-widest ${isUser ? "text-blue-100" : "text-slate-400"}`}>
+                        {msg.timestamp}
+                      </p>
+                    </div>
+                    {/* Pin button — visible on hover or when already pinned */}
+                    {msg.memoryId && (
+                      <button
+                        type="button"
+                        className={`absolute -top-2 ${isUser ? "-left-3" : "-right-3"} flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition ${
+                          msg.pinned
+                            ? "text-amber-500"
+                            : "text-slate-300 opacity-0 hover:text-amber-500 group-hover:opacity-100"
+                        }`}
+                        onClick={() => onTogglePin(msg)}
+                        title={msg.pinned ? "取消固定" : "固定消息"}
                       >
-                        <img src={msg.imageUrl} alt="生成图像" className="h-auto w-full object-cover" />
-                      </motion.div>
+                        <Pin size={12} />
+                      </button>
                     )}
-                    <p className={`mt-2 text-[11px] font-bold tracking-widest ${isUser ? "text-blue-100" : "text-slate-400"}`}>
-                      {msg.timestamp}
-                    </p>
                   </div>
                   {isUser && (
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
@@ -171,6 +203,19 @@ export default function ChatView({
       </div>
 
       <aside className="flex h-72 shrink-0 flex-col border-t border-slate-200 bg-white lg:h-auto lg:w-80 lg:border-l lg:border-t-0">
+        {/* Context management panel */}
+        <ContextPanel
+          open={contextPanelOpen}
+          onToggle={onToggleContextPanel}
+          tokenUsage={tokenUsage}
+          messages={messages}
+          contextDocs={contextDocs}
+          sessionId={chatSessionId}
+          onTogglePin={onTogglePin}
+          onUploadDoc={onUploadDoc}
+          onRemoveDoc={onRemoveDoc}
+        />
+
         <div className="border-b border-slate-200 p-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-sm font-semibold text-slate-700">会话历史</p>

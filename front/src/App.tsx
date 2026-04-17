@@ -25,8 +25,10 @@ import type {
   AuthResponse,
   AuthUser,
   ChatMessage,
+  ContextDoc,
   SkillShopItem,
   SkillShopListResponse,
+  TokenUsage,
   UserLLMConfig,
   UserListResponse,
   UserRole,
@@ -93,9 +95,11 @@ function mapMemoryToMessage(memory: AgentMemory): ChatMessage | null {
   const displayText = cleanText(memory.content, imageUrl);
   return {
     id: `${memory.session_id}-${memory.id}`,
+    memoryId: memory.id,
     role: memory.role,
     text: displayText,
     imageUrl,
+    pinned: memory.pinned ?? false,
     timestamp: new Date(memory.created_at).toLocaleTimeString("zh-CN", {
       hour: "2-digit",
       minute: "2-digit",
@@ -221,6 +225,8 @@ export default function App() {
     const memories = await apiRequest<AgentMemory[]>(`/agents/sessions/${sessionId}/messages?limit=500`, { method: "GET" });
     const restored = memories.map(mapMemoryToMessage).filter((item): item is ChatMessage => Boolean(item));
     setChatState({ messages: restored, chatSessionId: sessionId });
+    // Also load context docs for this session
+    void fetchContextDocs(sessionId);
     scrollToBottom();
   };
 
@@ -266,6 +272,77 @@ export default function App() {
       await loadSessionMessages(sessionId);
     } catch (error) {
       setChatState({ sessionsError: error instanceof Error ? error.message : "切换会话失败" });
+    }
+  };
+
+  const togglePin = async (msg: ChatMessage) => {
+    if (!chat.chatSessionId || !msg.memoryId) return;
+    try {
+      const result = await apiRequest<{ id: number; pinned: boolean }>(
+        `/agents/sessions/${chat.chatSessionId}/messages/${msg.memoryId}/pin`,
+        { method: "POST" },
+      );
+      // Update the pinned state in the local messages list
+      const currentMessages = useAppStore.getState().chat.messages;
+      setChatState({
+        messages: currentMessages.map((m) =>
+          m.id === msg.id ? { ...m, pinned: result.pinned } : m,
+        ),
+      });
+    } catch (error) {
+      console.error("Toggle pin failed:", error);
+    }
+  };
+
+  const fetchContextDocs = async (sessionId?: string) => {
+    const sid = sessionId ?? chat.chatSessionId;
+    if (!sid) return;
+    try {
+      const docs = await apiRequest<ContextDoc[]>(
+        `/agents/sessions/${sid}/context-docs`,
+        { method: "GET" },
+      );
+      setChatState({ contextDocs: docs });
+    } catch (error) {
+      console.error("Fetch context docs failed:", error);
+    }
+  };
+
+  const uploadContextDoc = async (file: File) => {
+    if (!chat.chatSessionId) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      // Use raw fetch for multipart form upload (apiRequest sets Content-Type to JSON)
+      const response = await fetch(
+        `${API_BASE_URL}/agents/sessions/${chat.chatSessionId}/context-docs`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${auth.token}` },
+          body: formData,
+        },
+      );
+      if (!response.ok) {
+        const data = (await response.json()) as { detail?: string };
+        throw new Error(data?.detail ?? "上传失败");
+      }
+      await fetchContextDocs();
+    } catch (error) {
+      console.error("Upload context doc failed:", error);
+    }
+  };
+
+  const removeContextDoc = async (docId: number) => {
+    if (!chat.chatSessionId) return;
+    try {
+      await apiRequest<{ status: string }>(
+        `/agents/sessions/${chat.chatSessionId}/context-docs/${docId}`,
+        { method: "DELETE" },
+      );
+      const currentDocs = useAppStore.getState().chat.contextDocs;
+      setChatState({ contextDocs: currentDocs.filter((d) => d.id !== docId) });
+    } catch (error) {
+      console.error("Remove context doc failed:", error);
     }
   };
 
@@ -555,7 +632,14 @@ export default function App() {
               );
               setChatState({ thinkingSteps: [...updated, resultStep] });
             }
-            if (event.eventType === "done") finalContent = String(event.payload.content ?? latestDraft ?? "");
+            if (event.eventType === "done") {
+              finalContent = String(event.payload.content ?? latestDraft ?? "");
+              // Capture cumulative token usage from the agent run
+              const usage = event.payload.usage as TokenUsage | undefined;
+              if (usage) {
+                setChatState({ tokenUsage: usage });
+              }
+            }
             if (event.eventType === "error") {
               const msg = String(event.payload.message ?? "请求过程中出现错误");
               appendMessage("assistant", `发生错误：${msg}`);
@@ -810,6 +894,13 @@ export default function App() {
                 sessionsError={chat.sessionsError}
                 streamState={chat.streamState}
                 thinkingSteps={chat.thinkingSteps}
+                tokenUsage={chat.tokenUsage}
+                contextDocs={chat.contextDocs}
+                contextPanelOpen={chat.contextPanelOpen}
+                onToggleContextPanel={() => setChatState({ contextPanelOpen: !chat.contextPanelOpen })}
+                onTogglePin={togglePin}
+                onUploadDoc={uploadContextDoc}
+                onRemoveDoc={removeContextDoc}
                 onInputChange={(value) => setChatState({ input: value })}
                 onSend={sendMessage}
                 onCreateSession={createNewSession}

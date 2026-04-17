@@ -28,7 +28,7 @@
 1. 安装依赖
 
 ```bash
-pip install -r backend/ai-service/requirements.txt
+uv sync --directory backend/ai-service
 ```
 
 2. 配置环境变量（新建 `backend/.env`）
@@ -58,7 +58,7 @@ CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:
 3. 启动 AI 服务（在仓库根目录执行）
 
 ```bash
-uvicorn main:app --app-dir backend/ai-service --host 127.0.0.1 --port 8000 --reload
+uv run --directory backend/ai-service uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 4. 验证
@@ -133,7 +133,7 @@ npm run dev
 - AI 服务：
 
 ```bash
-uvicorn main:app --app-dir backend/ai-service --host 0.0.0.0 --port 8000
+uv run --directory backend/ai-service uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 - 前端构建：

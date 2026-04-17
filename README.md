@@ -28,7 +28,7 @@ Lightweight Agent web app evolving toward a dual-backend architecture:
 1. Install dependencies:
 
 ```bash
-pip install -r backend/ai-service/requirements.txt
+uv sync --directory backend/ai-service
 ```
 
 2. Create `backend/.env`:
@@ -50,7 +50,7 @@ CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:
 3. Run AI service from repo root:
 
 ```bash
-uvicorn main:app --app-dir backend/ai-service --host 127.0.0.1 --port 8000 --reload
+uv run --directory backend/ai-service uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 4. Verify:
@@ -121,7 +121,7 @@ Default URL: `http://127.0.0.1:5173`
 - AI Service:
 
 ```bash
-uvicorn main:app --app-dir backend/ai-service --host 0.0.0.0 --port 8000
+uv run --directory backend/ai-service uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 - Frontend build:

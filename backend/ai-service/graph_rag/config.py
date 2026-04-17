@@ -74,6 +74,7 @@ class GraphRAGConfig:
     max_context_chars: int = 2600
     max_chars_per_doc: int = 380
     timeout_seconds: int = 30
+    bootstrap_timeout_seconds: int = 120
 
     @classmethod
     def from_env(cls) -> "GraphRAGConfig":
@@ -114,6 +115,7 @@ class GraphRAGConfig:
             max_context_chars=_get_env("RAG_MAX_CONTEXT_CHARS", int, aliases=("MAX_CONTEXT_CHARS",)) if os.getenv("RAG_MAX_CONTEXT_CHARS") or os.getenv("MAX_CONTEXT_CHARS") else 2600,
             max_chars_per_doc=_get_env("RAG_MAX_CHARS_PER_DOC", int, aliases=("MAX_CHARS_PER_DOC",)) if os.getenv("RAG_MAX_CHARS_PER_DOC") or os.getenv("MAX_CHARS_PER_DOC") else 380,
             timeout_seconds=_get_env("RAG_TIMEOUT_SECONDS", int, aliases=("RAG_TIMEOUT",)) if os.getenv("RAG_TIMEOUT_SECONDS") or os.getenv("RAG_TIMEOUT") else 30,
+            bootstrap_timeout_seconds=_get_env("RAG_BOOTSTRAP_TIMEOUT_SECONDS", int, aliases=("RAG_INIT_TIMEOUT_SECONDS",)) if os.getenv("RAG_BOOTSTRAP_TIMEOUT_SECONDS") or os.getenv("RAG_INIT_TIMEOUT_SECONDS") else 120,
         )
 
     @classmethod

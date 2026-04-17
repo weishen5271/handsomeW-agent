@@ -169,7 +169,8 @@ class GraphDataPreparationModule:
                    [x IN collect(DISTINCT a) WHERE x IS NOT NULL | {id: coalesce(x.nodeId, x.id), name: x.name, severity: x.severity}] AS alarms
             """,
             {"node_id": node_id},
-        ).single()
+        )
+        profile = next(iter(profile), None)
 
         equipment_props = dict(profile["equipment"]) if profile and profile.get("equipment") else dict(equipment.properties)
         production_line = profile.get("production_line") if profile else equipment_props.get("location", "未知产线")

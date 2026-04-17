@@ -388,14 +388,52 @@ class MyAgentsLLM:
             }
 
         reasoning_content = getattr(message, "reasoning_content", None)
+        content = self._extract_text_content(getattr(message, "content", None))
+        reasoning_text = self._extract_text_content(reasoning_content)
 
         return LLMResponse(
-            content=message.content,
+            content=content or reasoning_text,
             tool_calls=tool_calls,
             finish_reason=choice.finish_reason or "stop",
             usage=usage,
-            reasoning_content=reasoning_content,
+            reasoning_content=reasoning_text,
         )
+
+    def _extract_text_content(self, raw: Any) -> str | None:
+        if raw is None:
+            return None
+        if isinstance(raw, str):
+            text = raw.strip()
+            return text or None
+        if isinstance(raw, list):
+            parts: list[str] = []
+            for item in raw:
+                if isinstance(item, str):
+                    text = item.strip()
+                    if text:
+                        parts.append(text)
+                    continue
+                if isinstance(item, dict):
+                    for key in ("text", "content", "value"):
+                        value = item.get(key)
+                        if isinstance(value, str) and value.strip():
+                            parts.append(value.strip())
+                            break
+                    continue
+                text = str(item).strip()
+                if text:
+                    parts.append(text)
+            merged = "\n".join(parts).strip()
+            return merged or None
+        if isinstance(raw, dict):
+            for key in ("text", "content", "value"):
+                value = raw.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            text = str(raw).strip()
+            return text or None
+        text = str(raw).strip()
+        return text or None
 
 
 if __name__ == '__main__':

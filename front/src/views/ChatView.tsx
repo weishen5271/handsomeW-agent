@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { RefObject } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Bot, Image, Loader2, Pin, Plus, Send, User } from "lucide-react";
+import { Bot, Image, Loader2, Pin, Plus, Send, Trash2, User } from "lucide-react";
 import type { AgentSession, ChatMessage, ContextDoc, StreamState, ThinkingStep, TokenUsage } from "../types/app";
 import ThinkingPanel from "../components/ThinkingPanel";
 import ContextPanel from "../components/ContextPanel";
@@ -28,6 +28,7 @@ type ChatViewProps = {
   onSend: () => void | Promise<void>;
   onCreateSession: () => void | Promise<void>;
   onSwitchSession: (sessionId: string) => void | Promise<void>;
+  onDeleteSession: (session: AgentSession) => void | Promise<void>;
   onArchive: () => void;
   formatSessionTime: (isoText: string | null) => string;
   buildSessionTitle: (session: AgentSession, index: number) => string;
@@ -55,6 +56,7 @@ export default function ChatView({
   onSend,
   onCreateSession,
   onSwitchSession,
+  onDeleteSession,
   onArchive,
   formatSessionTime,
   buildSessionTitle,
@@ -144,7 +146,7 @@ export default function ChatView({
             </motion.article>
           )}
 
-          {streamState.loading && streamState.label && (
+          {streamState.loading && streamState.label && streamState.label !== "正在思考" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white">
                 <Loader2 size={16} className="animate-spin" />
@@ -249,22 +251,35 @@ export default function ChatView({
               {sessionList.map((session, index) => {
                 const active = session.id === chatSessionId;
                 return (
-                  <button
+                  <div
                     key={session.id}
-                    type="button"
-                    className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                    className={`group flex items-start gap-2 rounded-xl border px-3 py-2 transition ${
                       active
                         ? "border-primary bg-[rgba(27,97,201,0.1)]"
                         : "border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-text-weak)]"
                     }`}
-                    onClick={() => void onSwitchSession(session.id)}
-                    disabled={streamState.loading}
                   >
-                    <p className={`truncate text-sm font-semibold ${active ? "text-primary" : "text-[var(--color-text)]"}`}>
-                      {buildSessionTitle(session, index)}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--color-text-weak)]">{formatSessionTime(session.last_message_at ?? session.created_at)}</p>
-                  </button>
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 text-left"
+                      onClick={() => void onSwitchSession(session.id)}
+                      disabled={streamState.loading}
+                    >
+                      <p className={`truncate text-sm font-semibold ${active ? "text-primary" : "text-[var(--color-text)]"}`}>
+                        {buildSessionTitle(session, index)}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--color-text-weak)]">{formatSessionTime(session.last_message_at ?? session.created_at)}</p>
+                    </button>
+                    <button
+                      type="button"
+                      className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--color-text-weak)] transition hover:bg-[var(--color-surface-raised)] hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => void onDeleteSession(session)}
+                      disabled={streamState.loading}
+                      title="删除会话"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 );
               })}
             </div>

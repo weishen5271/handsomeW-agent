@@ -48,6 +48,17 @@ class ReactAgent(BaseAgent):
             # Do not let stream callback failures break the main agent flow.
             return
 
+    async def _synthesize_final_answer(self) -> Optional[LLMResponse]:
+        """Ask the model for a direct final answer when the loop ended without visible text."""
+        message_list = self.context.build_message(
+            (self.system_prompt or BASE_PROMPT_TEMPLATE)
+            + "\n\n请基于已有上下文和工具结果，直接给用户最终答案。不要再调用工具。"
+        )
+        return await self.llm.invoke(
+            message_list,
+            tools=None,
+        )
+
     async def run(
         self,
         input_str: str,
@@ -128,7 +139,8 @@ class ReactAgent(BaseAgent):
                 )
             )
 
-            if llm_response.tool_calls:
+            has_tool_calls = bool(llm_response.tool_calls)
+            if has_tool_calls:
                 self._emit_event(
                     event_handler,
                     "tool_call",
@@ -172,7 +184,35 @@ class ReactAgent(BaseAgent):
                         },
                     )
 
+            # Some OpenAI-compatible providers return `finish_reason == "stop"`
+            # together with tool calls. In that case we should continue the loop
+            # so the model can consume the tool results and produce a final answer.
+            if has_tool_calls:
+                continue
+
             if llm_response.finish_reason == "stop":
+                content_text = (llm_response.content or "").strip()
+                if not content_text:
+                    # Model returned stop with empty content (common with some
+                    # Chinese LLMs when tools are present).  Retry once without
+                    # tools so the model can answer directly.
+                    if verbose:
+                        print(f"{yellow} empty content on stop – retrying without tools")
+                    synthesized = await self._synthesize_final_answer()
+                    if synthesized and (synthesized.content or "").strip():
+                        content_text = synthesized.content.strip()
+                        llm_response = synthesized
+                        if synthesized.usage:
+                            for key in total_usage:
+                                total_usage[key] += synthesized.usage.get(key, 0)
+                    else:
+                        self._emit_event(
+                            event_handler,
+                            "error",
+                            {"message": "模型已结束，但未返回任何正文内容"},
+                        )
+                        raise RuntimeError("模型已结束，但未返回任何正文内容")
+
                 self._running_status = False
                 if verbose:
                     print(f"{green} react run done: {llm_response.finish_reason}")
@@ -181,23 +221,37 @@ class ReactAgent(BaseAgent):
                     event_handler,
                     "done",
                     {
-                        "content": llm_response.content or "",
+                        "content": content_text,
                         "finish_reason": llm_response.finish_reason or "stop",
                         "usage": total_usage,
                     },
                 )
                 return llm_response
 
+        final_response = llm_response
+        if final_response is None or not (final_response.content or "").strip():
+            synthesized = await self._synthesize_final_answer()
+            if synthesized is not None and (synthesized.content or "").strip():
+                final_response = synthesized
+
+        if final_response is None or not (final_response.content or "").strip():
+            self._emit_event(
+                event_handler,
+                "error",
+                {"message": "智能体执行结束，但未生成任何可展示内容"},
+            )
+            raise RuntimeError("智能体执行结束，但未生成任何可展示内容")
+
         self._emit_event(
             event_handler,
             "done",
             {
-                "content": llm_response.content if llm_response else "",
-                "finish_reason": llm_response.finish_reason if llm_response else "length",
+                "content": final_response.content if final_response else "",
+                "finish_reason": final_response.finish_reason if final_response else "length",
                 "usage": total_usage,
             },
         )
-        return llm_response
+        return final_response
 
     def _register_default_tools(self):
         self.context.add_tools(ReadFileTool())

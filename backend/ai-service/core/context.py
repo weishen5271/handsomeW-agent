@@ -57,8 +57,11 @@ class ContextBuilder():
             parts.append(self._get_identity())
         else:
             tools_str = "\n".join([tool.get_tools_description() for tool in self.toolExecutor.get_all_tools()])
-            # 替换系统提示词中的工具占位符
-            system_prompt = system_prompt.format(tools=tools_str)
+            # Replace {tools} placeholder if present; use str.replace to
+            # avoid KeyError when the prompt contains other braces (e.g.
+            # JSON from RAG context).
+            if "{tools}" in system_prompt:
+                system_prompt = system_prompt.replace("{tools}", tools_str)
             parts.append(system_prompt)
         # Bootstrap files
         bootstrap = self._load_bootstrap_files()

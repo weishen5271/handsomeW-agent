@@ -374,6 +374,18 @@ def get_chat_session(user_id: int, session_id: str) -> dict[str, Any] | None:
         return dict(row)
 
 
+def delete_chat_session(user_id: int, session_id: str) -> bool:
+    with _connect() as conn:
+        cursor = conn.execute(
+            """
+            DELETE FROM chat_sessions
+            WHERE id = %s AND user_id = %s
+            """,
+            (session_id, user_id),
+        )
+        return cursor.rowcount > 0
+
+
 def list_chat_sessions(user_id: int, limit: int = 20) -> list[dict[str, Any]]:
     safe_limit = max(1, min(limit, 100))
     with _connect() as conn:

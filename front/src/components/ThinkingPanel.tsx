@@ -24,12 +24,6 @@ function formatDuration(ms: number | undefined): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-/** Truncate long content for collapsed view */
-function truncate(text: string, max = 120): string {
-  if (text.length <= max) return text;
-  return text.slice(0, max) + "…";
-}
-
 function StatusIcon({ status }: { status: string }) {
   if (status === "running")
     return <Loader2 size={14} className="animate-spin text-blue-500" />;

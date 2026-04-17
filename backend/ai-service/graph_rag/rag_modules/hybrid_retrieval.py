@@ -19,6 +19,20 @@ from .milvus_index_construction import MilvusIndexConstructionModule
 logger = logging.getLogger(__name__)
 
 
+def _load_json_from_text(content: str) -> dict[str, Any]:
+    text = (content or "").strip()
+    if not text:
+        raise ValueError("empty llm response")
+    fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end >= start:
+        text = text[start:end + 1]
+    return json.loads(text)
+
+
 def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip()).lower()
 
@@ -71,11 +85,7 @@ class HybridRetrievalModule:
                 max_tokens=self.config.keyword_extraction_max_tokens,
             )
             content = (response.content or "").strip()
-            if content.startswith("```"):
-                content = content.strip("`")
-                if content.startswith("json"):
-                    content = content[4:].strip()
-            result = json.loads(content)
+            result = _load_json_from_text(content)
             entity_keywords = [str(item).strip() for item in result.get("entity_keywords", []) if str(item).strip()]
             topic_keywords = [str(item).strip() for item in result.get("topic_keywords", []) if str(item).strip()]
             if entity_keywords or topic_keywords:

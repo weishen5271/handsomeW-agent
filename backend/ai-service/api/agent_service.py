@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -21,7 +22,12 @@ from api.user_store import (
 )
 
 
-DEFAULT_SYSTEM_PROMPT = "You are a helpful ReAct assistant."
+DEFAULT_SYSTEM_PROMPT = (
+    "你是一个有能力调用外部工具的智能助手。\n"
+    "可用工具如下:\n{tools}\n\n"
+    "当用户提出简单问候或闲聊时，请直接用文字回复，不要调用工具。\n"
+    "当用户提出需要工具辅助的问题时，再根据需要调用合适的工具。"
+)
 logger = logging.getLogger(__name__)
 
 # RAG 增强提示词模板，可通过环境变量 RAG_SYSTEM_PROMPT_TEMPLATE 覆盖
@@ -49,6 +55,35 @@ def _load_react_agent_class():
 class AgentService:
     def __init__(self) -> None:
         pass
+
+    def _should_enable_rag_for_query(self, user_input: str, enable_rag: bool) -> tuple[bool, str | None]:
+        if not enable_rag:
+            return False, "disabled_by_user"
+
+        normalized = re.sub(r"\s+", " ", (user_input or "").strip().lower())
+        if not normalized:
+            return False, "empty_query"
+
+        greeting_patterns = {
+            "hi", "hello", "hey", "你好", "您好", "在吗", "在么", "早上好", "中午好", "晚上好",
+            "嗨", "哈喽", "测试", "test",
+        }
+        smalltalk_tokens = {
+            "谢谢", "感谢", "再见", "拜拜", "你是谁", "你能做什么", "介绍一下自己",
+        }
+        domain_keywords = {
+            "设备", "产线", "传感器", "告警", "报警", "故障", "异常", "根因", "影响", "维护",
+            "维修", "检修", "点检", "备件", "文档", "手册", "说明书", "健康", "状态", "参数",
+            "温度", "压力", "振动", "电机", "泵", "阀", "轴承", "neo4j", "milvus", "graphrag",
+        }
+
+        if normalized in greeting_patterns:
+            return False, "non_domain_smalltalk"
+        if normalized in smalltalk_tokens:
+            return False, "non_domain_smalltalk"
+        if len(normalized) <= 12 and not any(keyword in normalized for keyword in domain_keywords):
+            return False, "non_domain_smalltalk"
+        return True, None
 
     def _build_llm(self, user_id: int) -> MyAgentsLLM:
         config = get_user_llm_config(user_id)
@@ -213,30 +248,27 @@ class AgentService:
             fallback_history=history,
         )
 
-        effective_system_prompt, rag_meta = await self._build_prompt_with_rag_async(
-            user_input=user_input,
-            system_prompt=system_prompt,
-            enable_rag=enable_rag,
-            llm=llm,
-        )
-
-        ReactAgent = _load_react_agent_class()
-        react_agent = ReactAgent(
-            name=f"{agent_type.value}-react-runner",
-            llm=llm,
-            system_prompt=effective_system_prompt,
-            skill_loader=self._build_user_skill_loader(user_id),
-        )
-        self._prime_agent_context(react_agent=react_agent, history_messages=history_messages)
-
         queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+        stream_flags = {
+            "assistant_emitted": False,
+            "done_emitted": False,
+        }
+        loop = asyncio.get_running_loop()
+
+        def push_event(item: dict[str, Any] | None) -> None:
+            loop.call_soon_threadsafe(queue.put_nowait, item)
 
         def on_event(event: dict[str, Any]) -> None:
-            queue.put_nowait(event)
+            event_type = event.get("type")
+            if event_type == "assistant":
+                stream_flags["assistant_emitted"] = True
+            if event_type == "done":
+                stream_flags["done_emitted"] = True
+            push_event(event)
 
         async def runner() -> None:
             try:
-                queue.put_nowait(
+                push_event(
                     {
                         "type": "session",
                         "data": {
@@ -244,19 +276,35 @@ class AgentService:
                         },
                     }
                 )
-                queue.put_nowait(
+
+                effective_system_prompt, rag_meta = await self._build_prompt_with_rag_async(
+                    user_input=user_input,
+                    system_prompt=system_prompt,
+                    enable_rag=enable_rag,
+                    llm=llm,
+                )
+                push_event(
                     {
                         "type": "rag_context",
                         "data": rag_meta,
                     }
                 )
+
+                ReactAgent = _load_react_agent_class()
+                react_agent = ReactAgent(
+                    name=f"{agent_type.value}-react-runner",
+                    llm=llm,
+                    system_prompt=effective_system_prompt,
+                    skill_loader=self._build_user_skill_loader(user_id),
+                )
+                self._prime_agent_context(react_agent=react_agent, history_messages=history_messages)
                 result = await react_agent.run(
                     input_str=user_input,
                     verbose=False,
                     event_handler=on_event,
                 )
                 if result is None:
-                    queue.put_nowait(
+                    push_event(
                         {
                             "type": "error",
                             "data": {
@@ -265,8 +313,44 @@ class AgentService:
                             },
                         }
                     )
+                else:
+                    final_content = (result.content or "").strip()
+                    if not final_content and not stream_flags["assistant_emitted"]:
+                        # Result exists but content is empty and nothing was
+                        # streamed earlier – emit an error so the client is
+                        # never left with a silent empty response.
+                        push_event(
+                            {
+                                "type": "error",
+                                "data": {
+                                    "message": "智能体返回了空内容",
+                                    "agent_type": agent_type.value,
+                                },
+                            }
+                        )
+                    if final_content and not stream_flags["assistant_emitted"]:
+                        push_event(
+                            {
+                                "type": "assistant",
+                                "data": {
+                                    "content": final_content,
+                                    "finish_reason": result.finish_reason or "",
+                                },
+                            }
+                        )
+                    if final_content and not stream_flags["done_emitted"]:
+                        push_event(
+                            {
+                                "type": "done",
+                                "data": {
+                                    "content": final_content,
+                                    "finish_reason": result.finish_reason or "stop",
+                                    "usage": result.usage or {},
+                                },
+                            }
+                        )
             except Exception as exc:
-                queue.put_nowait(
+                push_event(
                     {
                         "type": "error",
                         "data": {
@@ -276,7 +360,7 @@ class AgentService:
                     }
                 )
             finally:
-                queue.put_nowait(None)
+                push_event(None)
 
         task = asyncio.create_task(runner())
         latest_assistant_content = ""
@@ -315,8 +399,9 @@ class AgentService:
         llm: MyAgentsLLM,
     ) -> tuple[str, dict[str, Any]]:
         base_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
-        if not enable_rag:
-            return base_prompt, {"enabled": False, "reason": "disabled_by_user"}
+        rag_enabled, disable_reason = self._should_enable_rag_for_query(user_input, enable_rag)
+        if not rag_enabled:
+            return base_prompt, {"enabled": False, "reason": disable_reason or "disabled_by_user"}
 
         try:
             # 延迟导入避免循环依赖
@@ -326,11 +411,10 @@ class AgentService:
                 from backend.rag.graph_rag_bridge import GraphRAGBridge
 
             bridge = GraphRAGBridge(llm_client=llm)
-            if not bridge.is_ready:
-                return base_prompt, {"enabled": False, "reason": "graph_rag_not_ready", "rag_available": False}
-
             rag_result = bridge.build_context(user_input, llm_client=llm)
             rag_meta = dict(rag_result.metadata or {})
+            if rag_meta.get("reason") in {"timeout", "runtime_error"}:
+                raise RuntimeError(str(rag_meta.get("error") or f"GraphRAG {rag_meta['reason']}"))
 
             if not rag_meta.get("enabled"):
                 rag_meta.setdefault("reason", "retrieval_disabled")
@@ -357,18 +441,9 @@ class AgentService:
                 "rag_available": True,
             })
             return effective_prompt, rag_meta
-        except Exception as exc:
+        except Exception:
             logger.exception("构建 GraphRAG Prompt 失败")
-            error_prompt = (
-                f"{base_prompt}\n\n"
-                "[注意: 知识检索系统暂时不可用，请基于自身能力回答，如有需要可明确说明无法获取实时信息。]"
-            )
-            return error_prompt, {
-                "enabled": False,
-                "reason": "prompt_build_error",
-                "error": f"{type(exc).__name__}: {exc}",
-                "rag_available": False,
-            }
+            raise
 
     async def _build_prompt_with_rag_async(
         self,
@@ -379,8 +454,9 @@ class AgentService:
     ) -> tuple[str, dict[str, Any]]:
         """Async version of _build_prompt_with_rag for non-blocking RAG retrieval."""
         base_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
-        if not enable_rag:
-            return base_prompt, {"enabled": False, "reason": "disabled_by_user"}
+        rag_enabled, disable_reason = self._should_enable_rag_for_query(user_input, enable_rag)
+        if not rag_enabled:
+            return base_prompt, {"enabled": False, "reason": disable_reason or "disabled_by_user"}
 
         try:
             # 延迟导入避免循环依赖
@@ -390,11 +466,10 @@ class AgentService:
                 from backend.rag.graph_rag_bridge import GraphRAGBridge
 
             bridge = GraphRAGBridge(llm_client=llm)
-            if not bridge.is_ready:
-                return base_prompt, {"enabled": False, "reason": "graph_rag_not_ready", "rag_available": False}
-
             rag_result = await bridge.build_context_async(user_input, llm_client=llm)
             rag_meta = dict(rag_result.metadata or {})
+            if rag_meta.get("reason") in {"timeout", "runtime_error"}:
+                raise RuntimeError(str(rag_meta.get("error") or f"GraphRAG {rag_meta['reason']}"))
 
             if not rag_meta.get("enabled"):
                 rag_meta.setdefault("reason", "retrieval_disabled")
@@ -421,18 +496,9 @@ class AgentService:
                 "rag_available": True,
             })
             return effective_prompt, rag_meta
-        except Exception as exc:
+        except Exception:
             logger.exception("构建 GraphRAG Prompt 失败")
-            error_prompt = (
-                f"{base_prompt}\n\n"
-                "[注意: 知识检索系统暂时不可用，请基于自身能力回答，如有需要可明确说明无法获取实时信息。]"
-            )
-            return error_prompt, {
-                "enabled": False,
-                "reason": "prompt_build_error",
-                "error": f"{type(exc).__name__}: {exc}",
-                "rag_available": False,
-            }
+            raise
 
     def _compose_prompt_with_rag(self, base_prompt: str, rag_context: str) -> str:
         return RAG_SYSTEM_PROMPT_TEMPLATE.format(base_prompt=base_prompt, rag_context=rag_context)

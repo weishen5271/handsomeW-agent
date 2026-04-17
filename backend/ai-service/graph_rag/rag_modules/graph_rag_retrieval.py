@@ -16,6 +16,20 @@ from neo4j import GraphDatabase
 logger = logging.getLogger(__name__)
 
 
+def _load_json_from_text(content: str) -> dict[str, Any]:
+    text = (content or "").strip()
+    if not text:
+        raise ValueError("empty llm response")
+    fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end >= start:
+        text = text[start:end + 1]
+    return json.loads(text)
+
+
 class QueryType(Enum):
     ENTITY_RELATION = "entity_relation"
     MULTI_HOP = "multi_hop"
@@ -96,11 +110,7 @@ class GraphRAGRetrieval:
                 max_tokens=self.config.graph_query_max_tokens,
             )
             content = (response.content or "").strip()
-            if content.startswith("```"):
-                content = content.strip("`")
-                if content.startswith("json"):
-                    content = content[4:].strip()
-            result = json.loads(content)
+            result = _load_json_from_text(content)
             return GraphQuery(
                 query_type=QueryType(result.get("query_type", "subgraph")),
                 source_entities=result.get("source_entities", []) or self._extract_entities_fallback(query),
@@ -223,7 +233,7 @@ class GraphRAGRetrieval:
             return self._empty_subgraph()
         try:
             with self.driver.session(database=self.config.neo4j_database) as session:
-                record = session.run(
+                cursor = session.run(
                     f"""
                     UNWIND $source_entities AS entity_name
                     MATCH (source)
@@ -237,7 +247,8 @@ class GraphRAGRetrieval:
                     LIMIT 1
                     """,
                     {"source_entities": graph_query.source_entities},
-                ).single()
+                )
+                record = next(iter(cursor), None)
                 if not record:
                     return self._empty_subgraph()
                 central_node = self._node_to_dict(record["source"])

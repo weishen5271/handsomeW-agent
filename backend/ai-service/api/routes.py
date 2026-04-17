@@ -18,6 +18,7 @@ from api.schemas import (
 from api.user_store import (
     add_context_doc,
     create_chat_session,
+    delete_chat_session,
     delete_context_doc,
     get_chat_session,
     list_chat_memories,
@@ -50,6 +51,17 @@ async def create_session(
 ) -> ChatSessionResponse:
     row = create_chat_session(user_id=current_user["id"])
     return ChatSessionResponse(**row)
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+) -> dict[str, str]:
+    deleted = delete_chat_session(user_id=current_user["id"], session_id=session_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {"status": "deleted"}
 
 
 @router.get("/sessions/{session_id}/messages", response_model=list[ChatMemoryResponse])

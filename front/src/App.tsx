@@ -16,7 +16,7 @@ import {
   Sun,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes, matchPath, useLocation, useNavigate } from "react-router-dom";
 import { API_BASE_URL, AGENT_API, SKILL_SHOP_PAGE_SIZE, TOKEN_KEY } from "./config";
 import type { DigitalAsset } from "./components/DigitalAssetsPanel";
 import { useAppStore } from "./stores/appStore";
@@ -91,6 +91,14 @@ function buildSessionTitle(session: AgentSession, index: number) {
   return raw || `会话 ${index + 1}`;
 }
 
+const EMPTY_TOKEN_USAGE: TokenUsage = {
+  prompt_tokens: 0,
+  completion_tokens: 0,
+  total_tokens: 0,
+};
+
+const SSE_DEBUG = import.meta.env.DEV;
+
 function mapMemoryToMessage(memory: AgentMemory): ChatMessage | null {
   if (memory.role !== "user" && memory.role !== "assistant") return null;
   const imageUrl = extractImageUrl(memory.content);
@@ -113,6 +121,10 @@ function resolveTitle(pathname: string, isAdmin: boolean) {
   if (pathname === "/scene3d") return "模型漫游";
   const item = NAV_ITEMS.find((entry) => entry.path === pathname && (!entry.adminOnly || isAdmin));
   return item?.title ?? "TwinMind";
+}
+
+function resolveChatRouteSessionId(pathname: string) {
+  return matchPath("/chat/:sessionId", pathname)?.params.sessionId ?? null;
 }
 
 export default function App() {
@@ -164,6 +176,7 @@ export default function App() {
   const skillShopRequestIdRef = useRef(0);
 
   const isAdmin = auth.currentUser?.role === "admin";
+  const routeSessionId = useMemo(() => resolveChatRouteSessionId(location.pathname), [location.pathname]);
   const historyPayload = useMemo(
     () =>
       chat.messages.map((message) => ({
@@ -244,11 +257,20 @@ export default function App() {
   };
 
   const loadSessionMessages = async (sessionId: string) => {
-    const memories = await apiRequest<AgentMemory[]>(`/agents/sessions/${sessionId}/messages?limit=500`, { method: "GET" });
+    const [memories, docs] = await Promise.all([
+      apiRequest<AgentMemory[]>(`/agents/sessions/${sessionId}/messages?limit=500`, { method: "GET" }),
+      apiRequest<ContextDoc[]>(`/agents/sessions/${sessionId}/context-docs`, { method: "GET" }),
+    ]);
     const restored = memories.map(mapMemoryToMessage).filter((item): item is ChatMessage => Boolean(item));
-    setChatState({ messages: restored, chatSessionId: sessionId });
-    // Also load context docs for this session
-    void fetchContextDocs(sessionId);
+    setChatState({
+      messages: restored,
+      contextDocs: docs,
+      chatSessionId: sessionId,
+      draft: "",
+      streamState: { loading: false, label: null },
+      thinkingSteps: [],
+      tokenUsage: EMPTY_TOKEN_USAGE,
+    });
     scrollToBottom();
   };
 
@@ -279,7 +301,17 @@ export default function App() {
     setChatState({ sessionsError: "" });
     try {
       const created = await apiRequest<AgentSession>("/agents/sessions", { method: "POST" });
-      setChatState({ chatSessionId: created.id, messages: [], draft: "", input: "" });
+      navigate(`/chat/${created.id}`);
+      setChatState({
+        chatSessionId: created.id,
+        messages: [],
+        contextDocs: [],
+        draft: "",
+        input: "",
+        streamState: { loading: false, label: null },
+        thinkingSteps: [],
+        tokenUsage: EMPTY_TOKEN_USAGE,
+      });
       const selectedId = await fetchSessions(created.id);
       if (selectedId && selectedId !== created.id) await loadSessionMessages(selectedId);
     } catch (error) {
@@ -289,11 +321,57 @@ export default function App() {
 
   const switchSession = async (sessionId: string) => {
     if (chat.streamState.loading || sessionId === chat.chatSessionId) return;
-    setChatState({ sessionsError: "", draft: "" });
+    navigate(`/chat/${sessionId}`);
+    setChatState({
+      sessionsError: "",
+      draft: "",
+      streamState: { loading: false, label: null },
+      thinkingSteps: [],
+      tokenUsage: EMPTY_TOKEN_USAGE,
+      contextDocs: [],
+    });
     try {
       await loadSessionMessages(sessionId);
     } catch (error) {
       setChatState({ sessionsError: error instanceof Error ? error.message : "切换会话失败" });
+    }
+  };
+
+  const deleteSession = async (session: AgentSession) => {
+    const sessionIndex = chat.sessionList.findIndex((item) => item.id === session.id);
+    const title = buildSessionTitle(session, sessionIndex >= 0 ? sessionIndex : 0);
+    if (!window.confirm(`确认删除会话「${title}」吗？此操作不可恢复。`)) return;
+
+    try {
+      await apiRequest<{ status: string }>(`/agents/sessions/${session.id}`, { method: "DELETE" });
+      const remainingSessions = chat.sessionList.filter((item) => item.id !== session.id);
+      const fallbackSessionId = remainingSessions[0]?.id ?? null;
+
+      setChatState({
+        sessionList: remainingSessions,
+        sessionsError: "",
+      });
+
+      if (chat.chatSessionId === session.id) {
+        if (fallbackSessionId) {
+          navigate(`/chat/${fallbackSessionId}`);
+          await loadSessionMessages(fallbackSessionId);
+        } else {
+          navigate("/chat");
+          setChatState({
+            chatSessionId: null,
+            messages: [],
+            contextDocs: [],
+            draft: "",
+            input: "",
+            streamState: { loading: false, label: null },
+            thinkingSteps: [],
+            tokenUsage: EMPTY_TOKEN_USAGE,
+          });
+        }
+      }
+    } catch (error) {
+      setChatState({ sessionsError: error instanceof Error ? error.message : "删除会话失败" });
     }
   };
 
@@ -316,20 +394,6 @@ export default function App() {
     }
   };
 
-  const fetchContextDocs = async (sessionId?: string) => {
-    const sid = sessionId ?? chat.chatSessionId;
-    if (!sid) return;
-    try {
-      const docs = await apiRequest<ContextDoc[]>(
-        `/agents/sessions/${sid}/context-docs`,
-        { method: "GET" },
-      );
-      setChatState({ contextDocs: docs });
-    } catch (error) {
-      console.error("Fetch context docs failed:", error);
-    }
-  };
-
   const uploadContextDoc = async (file: File) => {
     if (!chat.chatSessionId) return;
     const formData = new FormData();
@@ -348,7 +412,11 @@ export default function App() {
         const data = (await response.json()) as { detail?: string };
         throw new Error(data?.detail ?? "上传失败");
       }
-      await fetchContextDocs();
+      const docs = await apiRequest<ContextDoc[]>(
+        `/agents/sessions/${chat.chatSessionId}/context-docs`,
+        { method: "GET" },
+      );
+      setChatState({ contextDocs: docs });
     } catch (error) {
       console.error("Upload context doc failed:", error);
     }
@@ -575,16 +643,24 @@ export default function App() {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n\n");
+        const normalizedBuffer = buffer.replace(/\r\n/g, "\n");
+        if (SSE_DEBUG && normalizedBuffer.trim()) {
+          console.debug("[chat:sse:chunk]", normalizedBuffer);
+        }
+        const parts = normalizedBuffer.split("\n\n");
         buffer = parts.pop() ?? "";
 
         for (const raw of parts) {
           const events = parseBlocks(raw);
           for (const event of events) {
+            if (SSE_DEBUG) {
+              console.debug("[chat:sse:event]", event.eventType, event.payload);
+            }
             if (event.eventType === "session") {
               const sid = String(event.payload.session_id ?? "").trim();
               if (sid) {
                 resolvedSessionId = sid;
+                navigate(`/chat/${sid}`, { replace: true });
                 setChatState({ chatSessionId: sid });
               }
             }
@@ -664,23 +740,28 @@ export default function App() {
               }
             }
             if (event.eventType === "error") {
-              console.log("[DEBUG] Received error event:", event.payload);
               hasError = true;
               const msg = String(event.payload.message ?? "请求过程中出现错误");
               appendMessage("assistant", `发生错误：${msg}`);
               setChatState({ draft: "", streamState: { loading: false, label: null } });
               return;
             }
-            if (event.eventType === "done") {
-              console.log("[DEBUG] Received done event:", event.payload);
-            }
           }
         }
       }
 
-      // Only show default completion message if no error occurred
       if (!hasError) {
-        appendMessage("assistant", finalContent || latestDraft || "我已经完成处理。\n如需继续，请告诉我下一步目标。");
+        if (SSE_DEBUG && !finalContent && !latestDraft) {
+          console.warn("[chat:sse:fallback]", {
+            reason: "missing assistant content",
+            sessionId: resolvedSessionId,
+          });
+        }
+        const assistantText = (finalContent || latestDraft).trim();
+        if (!assistantText) {
+          throw new Error("智能体未返回任何正文内容");
+        }
+        appendMessage("assistant", assistantText);
         await fetchSessions(resolvedSessionId);
       }
     } catch (error) {
@@ -793,16 +874,31 @@ export default function App() {
   useEffect(() => {
     if (auth.token && auth.currentUser) {
       void (async () => {
-        const targetSessionId = await fetchSessions(chat.chatSessionId);
+        const preferredSessionId = routeSessionId ?? chat.chatSessionId;
+        const targetSessionId = await fetchSessions(preferredSessionId);
         if (!targetSessionId) {
-          setChatState({ chatSessionId: null, messages: [] });
+          if (location.pathname !== "/chat") {
+            navigate("/chat", { replace: true });
+          }
+          setChatState({
+            chatSessionId: null,
+            messages: [],
+            contextDocs: [],
+            draft: "",
+            streamState: { loading: false, label: null },
+            thinkingSteps: [],
+            tokenUsage: EMPTY_TOKEN_USAGE,
+          });
           return;
+        }
+        if (routeSessionId && routeSessionId !== targetSessionId) {
+          navigate(`/chat/${targetSessionId}`, { replace: true });
         }
         await loadSessionMessages(targetSessionId);
       })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.token, auth.currentUser?.id]);
+  }, [auth.token, auth.currentUser?.id, routeSessionId]);
 
   useEffect(() => {
     if (location.pathname === "/users" && isAdmin) void fetchUsers();
@@ -948,6 +1044,34 @@ export default function App() {
                 onSend={sendMessage}
                 onCreateSession={createNewSession}
                 onSwitchSession={switchSession}
+                onDeleteSession={deleteSession}
+                onArchive={handleArchive}
+                formatSessionTime={formatSessionTime}
+                buildSessionTitle={buildSessionTitle}
+              />} />
+              <Route path="/chat/:sessionId" element={<ChatView
+                chatRef={chatRef}
+                messages={chat.messages}
+                draft={chat.draft}
+                input={chat.input}
+                sessionList={chat.sessionList}
+                chatSessionId={chat.chatSessionId}
+                sessionsLoading={chat.sessionsLoading}
+                sessionsError={chat.sessionsError}
+                streamState={chat.streamState}
+                thinkingSteps={chat.thinkingSteps}
+                tokenUsage={chat.tokenUsage}
+                contextDocs={chat.contextDocs}
+                contextPanelOpen={chat.contextPanelOpen}
+                onToggleContextPanel={() => setChatState({ contextPanelOpen: !chat.contextPanelOpen })}
+                onTogglePin={togglePin}
+                onUploadDoc={uploadContextDoc}
+                onRemoveDoc={removeContextDoc}
+                onInputChange={(value) => setChatState({ input: value })}
+                onSend={sendMessage}
+                onCreateSession={createNewSession}
+                onSwitchSession={switchSession}
+                onDeleteSession={deleteSession}
                 onArchive={handleArchive}
                 formatSessionTime={formatSessionTime}
                 buildSessionTitle={buildSessionTitle}

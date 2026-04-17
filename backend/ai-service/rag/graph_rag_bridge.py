@@ -31,12 +31,7 @@ class GraphRAGBridge:
 
     @property
     def is_ready(self) -> bool:
-        try:
-            self.runtime.ensure_ready(llm_client=self.llm_client)
-            return True
-        except Exception as e:
-            logger.error("GraphRAG runtime query failed: %s", e)
-            return False
+        return self.runtime.system_ready
 
     def build_context(self, query: str, llm_client: MyAgentsLLM | None = None) -> RAGContextResult:
         return asyncio.get_event_loop().run_until_complete(
@@ -53,11 +48,10 @@ class GraphRAGBridge:
             return RAGContextResult(context_text="", metadata={"enabled": False, "reason": "empty_query"})
 
         try:
-            # 在线程池中执行同步的 query 调用，避免阻塞事件循环
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: self.runtime.query(query, llm_client=llm_client),
+            result = await self.runtime.query_async(
+                query,
+                llm_client=llm_client,
+                timeout=self.config.timeout_seconds if self.config else None,
             )
             docs = result.documents
             analysis = result.analysis
@@ -103,6 +97,17 @@ class GraphRAGBridge:
                     "reasoning": reasoning,
                     "source_count": len(sources),
                     "sources": sources,
+                },
+            )
+        except TimeoutError:
+            logger.warning("GraphRAG runtime query timed out: %s", query[:100])
+            return RAGContextResult(
+                context_text="",
+                metadata={
+                    "enabled": False,
+                    "retrieval_backend": "graph_db_vector_db",
+                    "reason": "timeout",
+                    "sources": [],
                 },
             )
         except Exception as exc:

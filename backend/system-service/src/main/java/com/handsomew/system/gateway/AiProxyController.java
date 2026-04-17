@@ -3,11 +3,17 @@ package com.handsomew.system.gateway;
 import com.handsomew.system.auth.web.AuthHeaderUtils;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.util.Map;
 
 @RestController
@@ -72,6 +78,12 @@ public class AiProxyController {
         return forwardJson(HttpMethod.POST, "/agents/sessions", authorization, null, null);
     }
 
+    @DeleteMapping("/agents/sessions/{sessionId}")
+    public Object deleteSession(@PathVariable String sessionId,
+                                @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return forwardJson(HttpMethod.DELETE, "/agents/sessions/" + sessionId, authorization, null, null);
+    }
+
     @GetMapping("/agents/sessions/{sessionId}/messages")
     public Object getSessionMessages(@PathVariable String sessionId,
                                      @RequestHeader(value = "Authorization", required = false) String authorization,
@@ -79,21 +91,89 @@ public class AiProxyController {
         return forwardJson(HttpMethod.GET, "/agents/sessions/" + sessionId + "/messages", authorization, null, query);
     }
 
-    @PostMapping(path = "/agents/{agentType}/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<Flux<DataBuffer>> chatStream(@PathVariable String agentType,
-                                                       @RequestHeader(value = "Authorization", required = false) String authorization,
-                                                       @RequestBody String body) {
+    @PostMapping("/agents/sessions/{sessionId}/messages/{memoryId}/pin")
+    public Object togglePin(@PathVariable String sessionId,
+                            @PathVariable String memoryId,
+                            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return forwardJson(HttpMethod.POST, "/agents/sessions/" + sessionId + "/messages/" + memoryId + "/pin", authorization, null, null);
+    }
+
+    @GetMapping("/agents/sessions/{sessionId}/context-docs")
+    public Object getContextDocs(@PathVariable String sessionId,
+                                 @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return forwardJson(HttpMethod.GET, "/agents/sessions/" + sessionId + "/context-docs", authorization, null, null);
+    }
+
+    @PostMapping(path = "/agents/sessions/{sessionId}/context-docs", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Object uploadContextDoc(@PathVariable String sessionId,
+                                   @RequestParam("file") MultipartFile file,
+                                   @RequestHeader(value = "Authorization", required = false) String authorization) throws IOException {
         String token = authHeaderUtils.extractBearerToken(authorization);
-        Flux<DataBuffer> flux = aiWebClient.post()
-                .uri("/agents/" + agentType + "/chat/stream")
+        MultipartBodyBuilder builder = new MultipartBodyBuilder();
+        builder.part("file", file.getResource())
+                .filename(file.getOriginalFilename())
+                .contentType(MediaType.parseMediaType(file.getContentType() == null ? MediaType.TEXT_PLAIN_VALUE : file.getContentType()));
+
+        return aiWebClient.post()
+                .uri("/agents/sessions/" + sessionId + "/context-docs")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body)
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .accept(MediaType.APPLICATION_JSON)
+                .bodyValue(builder.build())
                 .retrieve()
-                .bodyToFlux(DataBuffer.class);
+                .bodyToMono(new ParameterizedTypeReference<Object>() {})
+                .block();
+    }
+
+    @DeleteMapping("/agents/sessions/{sessionId}/context-docs/{docId}")
+    public Object deleteContextDoc(@PathVariable String sessionId,
+                                   @PathVariable String docId,
+                                   @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return forwardJson(HttpMethod.DELETE, "/agents/sessions/" + sessionId + "/context-docs/" + docId, authorization, null, null);
+    }
+
+    @PostMapping(path = "/agents/{agentType}/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<StreamingResponseBody> chatStream(@PathVariable String agentType,
+                                                            @RequestHeader(value = "Authorization", required = false) String authorization,
+                                                            @RequestBody String body) {
+        String token = authHeaderUtils.extractBearerToken(authorization);
+
+        StreamingResponseBody stream = (OutputStream outputStream) ->
+                aiWebClient.post()
+                        .uri("/agents/" + agentType + "/chat/stream")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .bodyValue(body)
+                        .retrieve()
+                        .bodyToFlux(DataBuffer.class)
+                        .doOnNext(buffer -> {
+                            try {
+                                byte[] bytes = new byte[buffer.readableByteCount()];
+                                buffer.read(bytes);
+                                outputStream.write(bytes);
+                                outputStream.flush();
+                            } catch (IOException e) {
+                                throw new UncheckedIOException(e);
+                            } finally {
+                                DataBufferUtils.release(buffer);
+                            }
+                        })
+                        .blockLast();
+
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_EVENT_STREAM)
-                .body(flux);
+                .header(HttpHeaders.CACHE_CONTROL, "no-cache")
+                .header(HttpHeaders.CONNECTION, "keep-alive")
+                .header("X-Accel-Buffering", "no")
+                .body(stream);
+    }
+
+    @PostMapping("/agents/{agentType}/chat")
+    public Object chat(@PathVariable String agentType,
+                       @RequestHeader(value = "Authorization", required = false) String authorization,
+                       @RequestBody String body) {
+        return forwardJson(HttpMethod.POST, "/agents/" + agentType + "/chat", authorization, body, null);
     }
 
     @GetMapping("/digital-twin/assets/{assetId}/knowledge-graph")

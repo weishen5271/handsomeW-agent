@@ -30,7 +30,8 @@ export function skillAccentClass(name: string): string {
 }
 
 export function parseBlocks(chunk: string) {
-  const blocks = chunk.split("\n\n").filter(Boolean);
+  const normalizedChunk = chunk.replace(/\r\n/g, "\n");
+  const blocks = normalizedChunk.split("\n\n").filter(Boolean);
   return blocks.map((block) => {
     const lines = block.split("\n");
     let eventType = "message";

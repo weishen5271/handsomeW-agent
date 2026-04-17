@@ -1,48 +1,50 @@
-from tavily import TavilyClient
-from .base_tool import Tool
-from typing import Dict
 import os
-class SearchTool(Tool):
+from typing import Any, Dict
 
+from .base_tool import Tool
+
+try:
+    from tavily import TavilyClient
+except ImportError:  # Optional dependency
+    TavilyClient = None
+
+
+class SearchTool(Tool):
     def __init__(self):
-        self.api_key = os.getenv("TAVILY_API_KEY")
-        self.description = "一个基于Tavily的实战网页搜索引擎工具。"
+        self.api_key = (os.getenv("TAVILY_API_KEY") or "").strip()
+        self.name = "search_web"
+        self.description = "使用 Tavily 执行网页搜索，返回标题和链接摘要。"
         self.parameters = {
             "type": "object",
             "properties": {
-                "input": {
+                "keyword": {
                     "type": "string",
-                    "description": "要搜索的关键词或者短语",
+                    "description": "要搜索的关键词或短语",
                 }
             },
-            "required": ["input"]
+            "required": ["keyword"],
         }
-        self.name = "search tool"
 
-    def execute(self,input:Dict,limit:int=10) -> str:
-        """
-            一个基于Tavily的实战网页搜索引擎工具。
-            它会智能地解析搜索结果，优先返回直接答案或知识图谱信息。
-        """
-        keyword = input.get("keyword",None)
+    def execute(self, input: Dict[str, Any], limit: int = 10) -> str:
+        keyword = str(input.get("keyword") or "").strip()
         if not keyword:
-            return "请输入搜索关键词"
-        print(f"🔍 正在执行 tavily 搜索,搜索关键词: {keyword}")
-        # 1. 从环境变量获取API密钥并实例化客户端
+            raise ValueError("缺少 keyword 参数")
+        if TavilyClient is None:
+            raise RuntimeError("未安装 tavily 依赖，无法使用 search_web 工具")
+        if not self.api_key:
+            raise RuntimeError("缺少 TAVILY_API_KEY，无法使用 search_web 工具")
+
         client = TavilyClient(api_key=self.api_key)
+        response = client.search(keyword, max_results=max(1, min(limit, 10)))
+        results = response.get("results", []) if isinstance(response, dict) else []
+        if not results:
+            return "未找到相关搜索结果"
 
-        # 2. 执行搜索
-        response = client.search(keyword)
-        # 3. 处理并打印结果
-        print(f"查询: {response['query']}")
-        print(f"响应时间: {response['response_time']}秒\n")
-        # 将返回的结果转换为字符串
-        results_str = "\n".join([f"{i+1}. {result['title']} - {result['url']}" for i, result in enumerate(response['results'])])
-        return results_str
-
-
-if __name__ == '__main__':
-    from dotenv import load_dotenv
-    load_dotenv()
-    search = SearchTool()
-    print(search.execute({"keyword":"今天北京的天气怎么样"}))
+        lines = []
+        for idx, result in enumerate(results, start=1):
+            title = str(result.get("title") or "无标题").strip()
+            url = str(result.get("url") or "").strip()
+            content = str(result.get("content") or "").strip()
+            snippet = f" - {content}" if content else ""
+            lines.append(f"{idx}. {title} - {url}{snippet}")
+        return "\n".join(lines)

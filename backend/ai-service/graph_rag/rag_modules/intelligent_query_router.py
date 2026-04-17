@@ -17,6 +17,20 @@ from langchain_core.documents import Document
 logger = logging.getLogger(__name__)
 
 
+def _load_json_from_text(content: str) -> dict[str, Any]:
+    text = (content or "").strip()
+    if not text:
+        raise ValueError("empty llm response")
+    fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end >= start:
+        text = text[start:end + 1]
+    return json.loads(text)
+
+
 class SearchStrategy(Enum):
     HYBRID_TRADITIONAL = "hybrid_traditional"
     GRAPH_RAG = "graph_rag"
@@ -70,9 +84,7 @@ class IntelligentQueryRouter:
                 max_tokens=self.config.query_analysis_max_tokens,
             )
             content = (response.content or "").strip()
-            json_match = re.search(r"```json\s*([\s\S]*?)\s*```", content)
-            json_str = json_match.group(1) if json_match else content
-            result = json.loads(json_str)
+            result = _load_json_from_text(content)
             analysis = QueryAnalysis(
                 query_complexity=float(result.get("query_complexity", 0.5)),
                 relationship_intensity=float(result.get("relationship_intensity", 0.5)),

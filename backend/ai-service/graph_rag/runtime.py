@@ -156,6 +156,11 @@ class GraphRAGRuntime:
     ) -> RuntimeQueryResult:
         """Async version of query with optional timeout."""
         timeout_seconds = timeout or self.config.timeout_seconds or 30
+        if not self.system_ready:
+            timeout_seconds = max(
+                timeout_seconds,
+                getattr(self.config, "bootstrap_timeout_seconds", 120) or 120,
+            )
         try:
             async with asyncio.timeout(timeout_seconds):
                 loop = asyncio.get_event_loop()

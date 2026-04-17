@@ -68,4 +68,16 @@ public class AlarmFlowService {
         authService.getCurrentUser(token);
         return new AlarmFlowLogListResponse(repository.listLogs(assetId, nodeId, limit));
     }
+
+    public AlarmFlowLiveLogListResponse liveLogs(String assetId, String token) {
+        authService.getCurrentUser(token);
+        repository.findByAssetId(assetId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "告警流程不存在"));
+        return syncClient.liveLogs(assetId, token);
+    }
+
+    public AlarmFlowDeleteResponse clearLiveLogs(String assetId, String token) {
+        authService.getCurrentUser(token);
+        return syncClient.clearLiveLogs(assetId, token);
+    }
 }

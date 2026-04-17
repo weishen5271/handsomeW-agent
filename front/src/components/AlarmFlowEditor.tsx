@@ -52,32 +52,31 @@ type FlowResponse = {
   updated_at: string;
 };
 
-type FlowLog = {
-  node_id: string;
+type FlowLiveLog = {
+  id: string;
   timestamp: string;
-  status: string;
-  input_count: number;
-  output_count: number;
-  duration_ms: number;
-  error?: string | null;
-  message?: string | null;
+  level: string;
+  message: string;
+  node_id?: string | null;
 };
 
-type FlowLogListResponse = {
-  logs: FlowLog[];
+type FlowLiveLogListResponse = {
+  logs: FlowLiveLog[];
 };
 
 type NodeTemplate = {
   type: string;
   label: string;
-  group: "source" | "process" | "store";
+  group: "trigger" | "source" | "process" | "store";
   description: string;
   color: string;
 };
 
 const NODE_TEMPLATES: NodeTemplate[] = [
+  { type: "delay_trigger", label: "延时触发", group: "trigger", description: "按固定秒数循环触发后续拉取节点", color: "bg-slate-50 border-slate-300 text-slate-700" },
+  { type: "cron_trigger", label: "定时轮询", group: "trigger", description: "按 Cron 表达式定时触发后续节点", color: "bg-zinc-50 border-zinc-300 text-zinc-700" },
   { type: "http_request", label: "HTTP 请求", group: "source", description: "定时拉取设备或平台告警接口", color: "bg-blue-50 border-blue-200 text-blue-700" },
-  { type: "mqtt_subscribe", label: "MQTT 订阅", group: "source", description: "订阅 Topic 实时接收告警", color: "bg-cyan-50 border-cyan-200 text-cyan-700" },
+  { type: "mqtt_subscribe", label: "MQTT 订阅", group: "source", description: "实时订阅 Topic，无需额外轮询触发", color: "bg-cyan-50 border-cyan-200 text-cyan-700" },
   { type: "database_query", label: "数据库查询", group: "source", description: "定时从数据库拉取告警记录", color: "bg-indigo-50 border-indigo-200 text-indigo-700" },
   { type: "transform", label: "字段映射", group: "process", description: "将原始字段映射成统一告警结构", color: "bg-amber-50 border-amber-200 text-amber-700" },
   { type: "filter", label: "过滤器", group: "process", description: "按条件过滤不需要的告警数据", color: "bg-orange-50 border-orange-200 text-orange-700" },
@@ -87,6 +86,7 @@ const NODE_TEMPLATES: NodeTemplate[] = [
 ];
 
 const GROUP_LABELS: Record<NodeTemplate["group"], string> = {
+  trigger: "触发节点",
   source: "数据源节点",
   process: "数据处理节点",
   store: "数据存储节点",
@@ -95,22 +95,19 @@ const GROUP_LABELS: Record<NodeTemplate["group"], string> = {
 const WORKSPACE_WIDTH = 2200;
 const WORKSPACE_HEIGHT = 1400;
 const NODE_WIDTH = 220;
-const NODE_HEIGHT = 128;
-
-type NodeFlowState = "healthy" | "idle" | "error" | "pending";
-
-type NodeFlowInsight = {
-  nodeId: string;
-  state: NodeFlowState;
-  lastLog: FlowLog | null;
-  lastSeen: string | null;
-  runs: number;
-  totalInput: number;
-  totalOutput: number;
-  errorCount: number;
-};
+const NODE_HEIGHT = 88;
 
 function createDefaultConfig(nodeType: string): Record<string, unknown> {
+  if (nodeType === "delay_trigger") {
+    return {
+      interval_seconds: 30,
+    };
+  }
+  if (nodeType === "cron_trigger") {
+    return {
+      schedule: "0 */5 * * * *",
+    };
+  }
   if (nodeType === "http_request") {
     return {
       url: "",
@@ -177,33 +174,6 @@ function createDefaultConfig(nodeType: string): Record<string, unknown> {
 
 function getNodeTemplate(nodeType: string): NodeTemplate {
   return NODE_TEMPLATES.find((item) => item.type === nodeType) ?? NODE_TEMPLATES[0];
-}
-
-function isSourceNode(nodeType: string): boolean {
-  return getNodeTemplate(nodeType).group === "source";
-}
-
-function getNodeFlowState(node: FlowNode, lastLog: FlowLog | null): NodeFlowState {
-  if (!lastLog) return "pending";
-  if (lastLog.status === "error") return "error";
-  if (isSourceNode(node.type)) {
-    return lastLog.output_count > 0 ? "healthy" : "idle";
-  }
-  return lastLog.input_count > 0 || lastLog.output_count > 0 ? "healthy" : "idle";
-}
-
-function getNodeStateLabel(state: NodeFlowState): string {
-  if (state === "healthy") return "有数据";
-  if (state === "idle") return "已执行无数据";
-  if (state === "error") return "异常";
-  return "待验证";
-}
-
-function getNodeStateClass(state: NodeFlowState): string {
-  if (state === "healthy") return "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (state === "idle") return "bg-amber-50 text-amber-700 border-amber-200";
-  if (state === "error") return "bg-red-50 text-red-700 border-red-200";
-  return "bg-slate-100 text-slate-600 border-slate-200";
 }
 
 function normalizeNodeConfig(node: FlowNode): FlowNode {
@@ -285,7 +255,6 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
 export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token, onClose }: AlarmFlowEditorProps) {
   const [flowId, setFlowId] = useState("");
   const [flowName, setFlowName] = useState(`${assetName} 告警接入流程`);
-  const [schedule, setSchedule] = useState("0 */5 * * * *");
   const [enabled, setEnabled] = useState(true);
   const [status, setStatus] = useState<FlowStatus>("stopped");
   const [nodes, setNodes] = useState<FlowNode[]>([]);
@@ -298,8 +267,8 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const [logsLoading, setLogsLoading] = useState(false);
-  const [logs, setLogs] = useState<FlowLog[]>([]);
+  const [liveLogsLoading, setLiveLogsLoading] = useState(false);
+  const [liveLogs, setLiveLogs] = useState<FlowLiveLog[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [canvasTransform, setCanvasTransform] = useState({ x: 0, y: 0, scale: 1 });
@@ -315,53 +284,6 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
     [edges, selectedEdgeKey],
   );
   const linkingNode = useMemo(() => nodes.find((node) => node.id === linkingNodeId) ?? null, [nodes, linkingNodeId]);
-  const nodeInsights = useMemo(() => {
-    const logsByNode = new Map<string, FlowLog[]>();
-    logs.forEach((log) => {
-      const current = logsByNode.get(log.node_id) ?? [];
-      current.push(log);
-      logsByNode.set(log.node_id, current);
-    });
-
-    return nodes.reduce<Record<string, NodeFlowInsight>>((acc, node) => {
-      const nodeLogs = logsByNode.get(node.id) ?? [];
-      const lastLog = nodeLogs[0] ?? null;
-      acc[node.id] = {
-        nodeId: node.id,
-        state: getNodeFlowState(node, lastLog),
-        lastLog,
-        lastSeen: lastLog?.timestamp ?? null,
-        runs: nodeLogs.length,
-        totalInput: nodeLogs.reduce((sum, item) => sum + item.input_count, 0),
-        totalOutput: nodeLogs.reduce((sum, item) => sum + item.output_count, 0),
-        errorCount: nodeLogs.filter((item) => item.status === "error").length,
-      };
-      return acc;
-    }, {});
-  }, [logs, nodes]);
-  const flowOverview = useMemo(() => {
-    const insights = Object.values(nodeInsights);
-    const sourceNodes = nodes.filter((node) => isSourceNode(node.type));
-    const healthySources = sourceNodes.filter((node) => nodeInsights[node.id]?.state === "healthy").length;
-    const errorNodes = insights.filter((item) => item.state === "error").length;
-    const activeNodes = insights.filter((item) => item.state === "healthy").length;
-    const lastActivity = logs[0]?.timestamp ?? null;
-    return {
-      sourceCount: sourceNodes.length,
-      healthySources,
-      errorNodes,
-      activeNodes,
-      lastActivity,
-      connected:
-        sourceNodes.length > 0
-          ? healthySources > 0
-            ? "已接入数据"
-            : insights.some((item) => item.state === "error")
-              ? "接入异常"
-              : "暂未取到数据"
-          : "待配置数据源",
-    };
-  }, [logs, nodeInsights, nodes]);
   const groupedTemplates = useMemo(
     () =>
       NODE_TEMPLATES.reduce<Record<NodeTemplate["group"], NodeTemplate[]>>(
@@ -369,29 +291,48 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
           acc[item.group].push(item);
           return acc;
         },
-        { source: [], process: [], store: [] },
+        { trigger: [], source: [], process: [], store: [] },
       ),
     [],
   );
 
-  const loadLogs = async () => {
-    setLogsLoading(true);
+  const loadLiveLogs = async () => {
+    setLiveLogsLoading(true);
     try {
-      const query = new URLSearchParams();
-      query.set("limit", "120");
-      const response = await fetch(`${apiBaseUrl}/digital-twin/assets/${assetId}/alarm-flow/logs?${query.toString()}`, {
+      const response = await fetch(`${apiBaseUrl}/digital-twin/assets/${assetId}/alarm-flow/live-logs`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!response.ok) {
-        throw new Error("数据流转状态加载失败");
+      if (response.status === 404) {
+        setLiveLogs([]);
+        return;
       }
-      const data = (await response.json()) as FlowLogListResponse;
-      setLogs(data.logs);
+      if (!response.ok) {
+        throw new Error("实时日志加载失败");
+      }
+      const data = (await response.json()) as FlowLiveLogListResponse;
+      setLiveLogs(data.logs);
     } catch (err) {
-      setLogs([]);
-      setError(err instanceof Error ? err.message : "数据流转状态加载失败");
+      setLiveLogs([]);
+      setError(err instanceof Error ? err.message : "实时日志加载失败");
     } finally {
-      setLogsLoading(false);
+      setLiveLogsLoading(false);
+    }
+  };
+
+  const clearLiveLogs = async (silent = false) => {
+    try {
+      await fetch(`${apiBaseUrl}/digital-twin/assets/${assetId}/alarm-flow/live-logs`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setLiveLogs([]);
+      if (!silent) {
+        setNotice("实时日志已清空");
+      }
+    } catch {
+      if (!silent) {
+        setError("实时日志清空失败");
+      }
     }
   };
 
@@ -410,7 +351,7 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
         setFlowId("");
         setSelectedNodeId(null);
         setSelectedEdgeKey(null);
-        setLogs([]);
+        setLiveLogs([]);
         return;
       }
       if (!response.ok) {
@@ -419,14 +360,13 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
       const data = (await response.json()) as FlowResponse;
       setFlowId(data.id);
       setFlowName(data.name);
-      setSchedule(data.schedule);
       setEnabled(data.enabled);
       setStatus(data.status);
       setNodes((data.nodes ?? []).map(normalizeNodeConfig));
       setEdges(data.edges ?? []);
       const nextSelectedNodeId = data.nodes?.[0]?.id ?? null;
       setSelectedNodeId(nextSelectedNodeId);
-      await loadLogs();
+      await loadLiveLogs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "流程配置加载失败");
     } finally {
@@ -435,18 +375,28 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
   };
 
   useEffect(() => {
-    void loadFlow();
+    void (async () => {
+      await clearLiveLogs(true);
+      await loadFlow();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assetId]);
 
   useEffect(() => {
-    if (!flowId || status !== "running") return;
+    if (!flowId) return;
     const timer = window.setInterval(() => {
-      void loadLogs();
-    }, 10000);
+      void loadLiveLogs();
+    }, 1000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flowId, status, assetId]);
+  }, [flowId, assetId]);
+
+  useEffect(() => {
+    return () => {
+      void clearLiveLogs(true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assetId]);
 
   const addNode = (template: NodeTemplate) => {
     const id = `node-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -496,7 +446,7 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
       body: JSON.stringify({
         name: flowName.trim(),
         enabled,
-        schedule: schedule.trim(),
+        schedule: "",
         nodes: payloadNodes,
         edges,
       }),
@@ -546,8 +496,8 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
       }
       setStatus("running");
       setEnabled(true);
-      setNotice("流程已部署，定时任务已启动");
-      await loadLogs();
+      setNotice("流程已部署，触发节点或实时接入源已启动");
+      await loadLiveLogs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "流程部署失败");
     } finally {
@@ -591,14 +541,13 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
       }
       setFlowId("");
       setFlowName(`${assetName} 告警接入流程`);
-      setSchedule("0 */5 * * * *");
       setEnabled(true);
       setStatus("stopped");
       setNodes([]);
       setEdges([]);
       setSelectedNodeId(null);
       setSelectedEdgeKey(null);
-      setLogs([]);
+      setLiveLogs([]);
       setNotice("流程配置已删除");
     } catch (err) {
       setError(err instanceof Error ? err.message : "流程删除失败");
@@ -679,22 +628,16 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
                     className="h-10 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm outline-none focus:border-blue-300"
                   />
                 </label>
-                <label className="mt-3 block space-y-1">
-                  <span className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-weak)]">Cron 调度</span>
-                  <input
-                    value={schedule}
-                    onChange={(event) => setSchedule(event.target.value)}
-                    className="h-10 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm font-mono outline-none focus:border-blue-300"
-                    placeholder="0 */5 * * * *"
-                  />
-                </label>
                 <label className="mt-3 flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3 py-2 text-sm text-[var(--color-text)]">
                   <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-                  保存时同步更新启用状态
+                  保存时同步更新流程启用状态
                 </label>
+                <p className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">
+                  调度方式请在流程起点添加“延时触发”或“定时轮询”节点。MQTT 节点可直接作为实时接入源。
+                </p>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-                {(["source", "process", "store"] as const).map((group) => (
+                {(["trigger", "source", "process", "store"] as const).map((group) => (
                   <div key={group} className="mb-5">
                     <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-weak)]">{GROUP_LABELS[group]}</h3>
                     <div className="space-y-2">
@@ -811,7 +754,6 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
                       if (!sourceNode || !targetNode) return null;
                       const key = `${edge.source}-${edge.target}`;
                       const active = selectedEdgeKey === key;
-                      const sourceState = nodeInsights[edge.source]?.state ?? "pending";
                       const startX = sourceNode.position.x + NODE_WIDTH;
                       const startY = sourceNode.position.y + NODE_HEIGHT / 2;
                       const endX = targetNode.position.x;
@@ -822,7 +764,7 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
                           <path
                             d={`M ${startX} ${startY} C ${startX + curveX} ${startY}, ${endX - curveX} ${endY}, ${endX} ${endY}`}
                             fill="none"
-                            stroke={active ? "#2563EB" : sourceState === "error" ? "#DC2626" : sourceState === "healthy" ? "#0F766E" : "#94A3B8"}
+                            stroke={active ? "#2563EB" : "#94A3B8"}
                             strokeWidth={active ? 3 : 2}
                           />
                         </g>
@@ -843,7 +785,6 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
                     const template = getNodeTemplate(node.type);
                     const active = selectedNodeId === node.id;
                     const linking = linkingNodeId === node.id;
-                    const insight = nodeInsights[node.id];
                     return (
                       <div
                         key={node.id}
@@ -919,9 +860,6 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
                             <div className="mt-2 text-sm font-semibold text-[var(--color-text)]">{template.label}</div>
                           </div>
                           <div className="flex items-center gap-1">
-                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getNodeStateClass(insight?.state ?? "pending")}`}>
-                              {getNodeStateLabel(insight?.state ?? "pending")}
-                            </span>
                             <button
                               type="button"
                               title="删除节点"
@@ -946,11 +884,6 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
                           </div>
                         </div>
                         <div className="relative mt-2 line-clamp-2 text-xs text-[var(--color-text)]">{template.description}</div>
-                        <div className="relative mt-3 flex items-center justify-between rounded-xl bg-white/70 px-2.5 py-2 text-[11px] text-slate-600">
-                          <span>入 {insight?.lastLog?.input_count ?? 0}</span>
-                          <span>出 {insight?.lastLog?.output_count ?? 0}</span>
-                          <span>{insight?.lastLog ? `${insight.lastLog.duration_ms}ms` : "--"}</span>
-                        </div>
                         <button
                           type="button"
                           title="从这里发起连线"
@@ -1000,77 +933,11 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-                <div className="card mb-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-[var(--color-text)]">数据流转概览</h4>
-                      <p className="mt-1 text-xs text-[var(--color-text-weak)]">展示各节点最近一次执行结果，帮助判断数据源是否真正接入。</p>
-                    </div>
-                    {logsLoading ? <Loader2 size={14} className="animate-spin text-blue-600" /> : null}
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                      <div className="text-xs text-[var(--color-text-weak)]">接入状态</div>
-                      <div className="mt-1 text-sm font-semibold text-[var(--color-text)]">{flowOverview.connected}</div>
-                    </div>
-                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                      <div className="text-xs text-[var(--color-text-weak)]">最近流转</div>
-                      <div className="mt-1 text-sm font-semibold text-[var(--color-text)]">{flowOverview.lastActivity ? formatTime(flowOverview.lastActivity) : "暂无"}</div>
-                    </div>
-                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                      <div className="text-xs text-[var(--color-text-weak)]">正常节点</div>
-                      <div className="mt-1 text-sm font-semibold text-[var(--color-text)]">
-                        {flowOverview.activeNodes} / {nodes.length}
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                      <div className="text-xs text-[var(--color-text-weak)]">异常节点</div>
-                      <div className="mt-1 text-sm font-semibold text-[var(--color-text)]">{flowOverview.errorNodes}</div>
-                    </div>
-                  </div>
-                </div>
-
                 {selectedNode && selectedNodeTemplate ? (
                   <div className="space-y-4">
                     <div className={`card rounded-2xl border px-3 py-3 ${selectedNodeTemplate.color}`}>
                       <div className="text-sm font-semibold">{selectedNodeTemplate.label}</div>
                       <div className="mt-1 text-xs opacity-80">{selectedNode.id}</div>
-                    </div>
-
-                    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-[var(--color-text)]">当前节点流转状态</div>
-                        <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${getNodeStateClass(nodeInsights[selectedNode.id]?.state ?? "pending")}`}>
-                          {getNodeStateLabel(nodeInsights[selectedNode.id]?.state ?? "pending")}
-                        </span>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                        <div className="rounded-xl bg-[var(--color-surface)] p-3">
-                          <div className="text-xs text-[var(--color-text-weak)]">最近输入 / 输出</div>
-                          <div className="mt-1 font-semibold text-[var(--color-text)]">
-                            {nodeInsights[selectedNode.id]?.lastLog?.input_count ?? 0} / {nodeInsights[selectedNode.id]?.lastLog?.output_count ?? 0}
-                          </div>
-                        </div>
-                        <div className="rounded-xl bg-[var(--color-surface)] p-3">
-                          <div className="text-xs text-[var(--color-text-weak)]">累计执行 / 异常</div>
-                          <div className="mt-1 font-semibold text-[var(--color-text)]">
-                            {nodeInsights[selectedNode.id]?.runs ?? 0} / {nodeInsights[selectedNode.id]?.errorCount ?? 0}
-                          </div>
-                        </div>
-                        <div className="rounded-xl bg-[var(--color-surface)] p-3">
-                          <div className="text-xs text-[var(--color-text-weak)]">最近耗时</div>
-                          <div className="mt-1 font-semibold text-[var(--color-text)]">{nodeInsights[selectedNode.id]?.lastLog ? `${nodeInsights[selectedNode.id].lastLog!.duration_ms}ms` : "--"}</div>
-                        </div>
-                        <div className="rounded-xl bg-[var(--color-surface)] p-3">
-                          <div className="text-xs text-[var(--color-text-weak)]">最近流转时间</div>
-                          <div className="mt-1 font-semibold text-[var(--color-text)]">{nodeInsights[selectedNode.id]?.lastSeen ? formatTime(nodeInsights[selectedNode.id].lastSeen!) : "暂无"}</div>
-                        </div>
-                      </div>
-                      {nodeInsights[selectedNode.id]?.lastLog?.error ? (
-                        <div className="mt-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
-                          {nodeInsights[selectedNode.id].lastLog!.error}
-                        </div>
-                      ) : null}
                     </div>
 
                     {selectedNode.type === "http_request" ? (
@@ -1099,6 +966,31 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
                           <input value={String(selectedNode.config.response_path ?? "$")} onChange={(event) => updateSelectedNodeConfig("response_path", event.target.value)} className="h-10 w-full rounded-xl border border-[var(--color-border)] px-3 text-sm font-mono outline-none focus:border-blue-300" />
                         </label>
                       </>
+                    ) : null}
+
+                    {selectedNode.type === "delay_trigger" ? (
+                      <label className="block space-y-1">
+                        <span className="text-sm text-[var(--color-text-weak)]">循环间隔（秒）</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={Number(selectedNode.config.interval_seconds ?? 30)}
+                          onChange={(event) => updateSelectedNodeConfig("interval_seconds", Number(event.target.value))}
+                          className="h-10 w-full rounded-xl border border-[var(--color-border)] px-3 text-sm outline-none focus:border-blue-300"
+                        />
+                      </label>
+                    ) : null}
+
+                    {selectedNode.type === "cron_trigger" ? (
+                      <label className="block space-y-1">
+                        <span className="text-sm text-[var(--color-text-weak)]">Cron 表达式</span>
+                        <input
+                          value={String(selectedNode.config.schedule ?? "0 */5 * * * *")}
+                          onChange={(event) => updateSelectedNodeConfig("schedule", event.target.value)}
+                          className="h-10 w-full rounded-xl border border-[var(--color-border)] px-3 text-sm font-mono outline-none focus:border-blue-300"
+                          placeholder="0 */5 * * * *"
+                        />
+                      </label>
                     ) : null}
 
                     {selectedNode.type === "mqtt_subscribe" ? (
@@ -1205,50 +1097,42 @@ export default function AlarmFlowEditor({ assetId, assetName, apiBaseUrl, token,
                 )}
 
                 <div className="card mt-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)]">
-                  <div className="border-b border-[var(--color-border)] px-4 py-3">
-                    <div className="text-sm font-semibold text-[var(--color-text)]">各节点数据流转情况</div>
-                    <p className="mt-1 text-xs text-[var(--color-text-weak)]">重点看数据源节点是否有输出，以及下游节点是否持续收到输入。</p>
+                  <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
+                    <div>
+                      <div className="text-sm font-semibold text-[var(--color-text)]">当前流程实时日志</div>
+                      <p className="mt-1 text-xs text-[var(--color-text-weak)]">仅保存在当前会话内存中，离开页面或点击清空后即删除。</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {liveLogsLoading ? <Loader2 size={14} className="animate-spin text-blue-600" /> : null}
+                      <button type="button" onClick={() => void loadLiveLogs()} className="btn-secondary h-8 px-3 text-xs">
+                        刷新
+                      </button>
+                      <button type="button" onClick={() => void clearLiveLogs()} className="btn-secondary h-8 px-3 text-xs">
+                        清空
+                      </button>
+                    </div>
                   </div>
-                  <div className="max-h-[320px] overflow-y-auto px-4 py-3">
-                    {nodes.length === 0 ? (
-                      <p className="text-sm text-[var(--color-text-weak)]">暂无节点，请先在左侧添加数据源和处理节点。</p>
+                  <div className="max-h-[360px] overflow-y-auto bg-slate-950 px-4 py-3 font-mono text-xs">
+                    {liveLogs.length === 0 ? (
+                      <p className="text-slate-400">暂无实时日志。部署流程后，这里会持续显示当前流程的执行输出。</p>
                     ) : (
                       <div className="space-y-3">
-                        {nodes.map((node) => {
-                          const template = getNodeTemplate(node.type);
-                          const insight = nodeInsights[node.id];
+                        {liveLogs.map((log) => {
+                          const levelClass =
+                            log.level === "error"
+                              ? "text-red-300"
+                              : log.level === "success"
+                                ? "text-emerald-300"
+                                : "text-slate-200";
                           return (
-                            <button
-                              key={node.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedNodeId(node.id);
-                                setSelectedEdgeKey(null);
-                              }}
-                              className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                                selectedNodeId === node.id
-                                  ? "border-blue-300 bg-blue-50/60"
-                                  : "border-[var(--color-border)] bg-[var(--color-surface)] hover:border-blue-200"
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="text-sm font-semibold text-[var(--color-text)]">{template.label}</div>
-                                  <div className="mt-1 text-xs text-[var(--color-text-weak)]">{node.id}</div>
-                                </div>
-                                <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${getNodeStateClass(insight?.state ?? "pending")}`}>
-                                  {getNodeStateLabel(insight?.state ?? "pending")}
-                                </span>
+                            <div key={log.id} className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
+                              <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                                <span>{formatTime(log.timestamp)}</span>
+                                <span className={`rounded-full border border-slate-700 px-2 py-0.5 uppercase ${levelClass}`}>{log.level}</span>
+                                {log.node_id ? <span className="text-sky-300">{log.node_id}</span> : null}
                               </div>
-                              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-[var(--color-text-weak)]">
-                                <div>最近输入 {insight?.lastLog?.input_count ?? 0}</div>
-                                <div>最近输出 {insight?.lastLog?.output_count ?? 0}</div>
-                                <div>累计异常 {insight?.errorCount ?? 0}</div>
-                              </div>
-                              <div className="mt-2 text-xs text-[var(--color-text-weak)]">
-                                {insight?.lastSeen ? `最近流转：${formatTime(insight.lastSeen)}` : "尚未有运行记录"}
-                              </div>
-                            </button>
+                              <div className={`mt-2 whitespace-pre-wrap break-words leading-5 ${levelClass}`}>{log.message}</div>
+                            </div>
                           );
                         })}
                       </div>

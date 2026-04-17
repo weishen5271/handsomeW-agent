@@ -10,7 +10,12 @@ import psycopg
 from neo4j import GraphDatabase
 from neo4j.exceptions import Neo4jError
 
-from api.alarm_flow_store import create_alarm_flow_log, create_alarm_record
+from api.alarm_flow_store import create_alarm_record
+from flow.live_log_store import alarm_flow_live_log_store
+
+TRIGGER_NODE_TYPES = {"delay_trigger", "cron_trigger"}
+MQTT_NODE_TYPES = {"mqtt_subscribe", "mqtt"}
+PULL_SOURCE_NODE_TYPES = {"http_request", "http", "database_query", "db_query"}
 
 
 def _normalize_records(data: Any) -> list[dict[str, Any]]:
@@ -150,10 +155,20 @@ class FlowExecutor:
         if len(order) != len(nodes):
             raise RuntimeError("流程存在循环依赖，无法部署")
 
+        root_nodes = [node_map[node_id] for node_id in order if not upstream.get(node_id)]
+        if not root_nodes:
+            raise RuntimeError("流程缺少起始节点")
+
         for node_id in order:
             node = node_map[node_id]
             node_type = (node.get("type") or "").strip().lower()
             config = node.get("config") or {}
+            if node_type == "delay_trigger":
+                interval_seconds = int(config.get("interval_seconds") or 0)
+                if interval_seconds <= 0:
+                    raise RuntimeError(f"节点 {node_id} 的延时触发间隔必须大于 0 秒")
+            if node_type == "cron_trigger" and not str(config.get("schedule") or "").strip():
+                raise RuntimeError(f"节点 {node_id} 缺少轮询 Cron 表达式")
             if node_type in {"http_request", "http"} and not str(config.get("url") or "").strip():
                 raise RuntimeError(f"节点 {node_id} 缺少 HTTP URL")
             if node_type in {"mqtt_subscribe", "mqtt"}:
@@ -166,6 +181,8 @@ class FlowExecutor:
             if node_type not in {
                 "http_request",
                 "http",
+                "delay_trigger",
+                "cron_trigger",
                 "mqtt_subscribe",
                 "mqtt",
                 "database_query",
@@ -181,10 +198,19 @@ class FlowExecutor:
                 "pg_store",
             }:
                 raise RuntimeError(f"不支持的节点类型: {node_type}")
+
+            has_upstream = bool(upstream.get(node_id))
+            if node_type in TRIGGER_NODE_TYPES and has_upstream:
+                raise RuntimeError(f"触发节点 {node_id} 必须位于流程起点")
+            if node_type in PULL_SOURCE_NODE_TYPES and not has_upstream:
+                raise RuntimeError(f"节点 {node_id} 需要接在触发节点后面，不能直接作为流程起点")
+            if not has_upstream and node_type not in TRIGGER_NODE_TYPES.union(MQTT_NODE_TYPES):
+                raise RuntimeError(f"节点 {node_id} 不能直接作为流程起点，请在前面添加触发节点，或改用 MQTT 实时接入")
         return order, node_map, upstream
 
     def execute(self, flow: dict[str, Any]) -> None:
         order, node_map, upstream = self.validate(flow)
+        alarm_flow_live_log_store.append(flow["asset_id"], level="info", message=f"开始执行流程：{flow.get('name') or flow['id']}")
         results: dict[str, list[dict[str, Any]]] = {}
         for node_id in order:
             node = node_map[node_id]
@@ -194,37 +220,39 @@ class FlowExecutor:
 
             started = time.perf_counter()
             try:
+                alarm_flow_live_log_store.append(
+                    flow["asset_id"],
+                    level="info",
+                    node_id=node_id,
+                    message=f"开始执行节点 {node_id}，当前输入 {len(inputs)} 条",
+                )
                 outputs = self._execute_node(flow=flow, node=node, records=inputs)
                 duration_ms = int((time.perf_counter() - started) * 1000)
-                create_alarm_flow_log(
-                    asset_id=flow["asset_id"],
-                    flow_id=flow["id"],
+                alarm_flow_live_log_store.append(
+                    flow["asset_id"],
+                    level="success",
                     node_id=node_id,
-                    status="success",
-                    input_count=len(inputs),
-                    output_count=len(outputs),
-                    duration_ms=duration_ms,
-                    message=f"节点 {node_id} 执行成功",
+                    message=f"节点 {node_id} 执行成功，输入 {len(inputs)} 条，输出 {len(outputs)} 条，耗时 {duration_ms}ms",
                 )
                 results[node_id] = outputs
             except Exception as exc:
                 duration_ms = int((time.perf_counter() - started) * 1000)
-                create_alarm_flow_log(
-                    asset_id=flow["asset_id"],
-                    flow_id=flow["id"],
+                alarm_flow_live_log_store.append(
+                    flow["asset_id"],
+                    level="error",
                     node_id=node_id,
-                    status="error",
-                    input_count=len(inputs),
-                    output_count=0,
-                    duration_ms=duration_ms,
-                    error=str(exc),
-                    message=f"节点 {node_id} 执行失败",
+                    message=f"节点 {node_id} 执行失败：{exc}（耗时 {duration_ms}ms）",
                 )
                 raise
+        alarm_flow_live_log_store.append(flow["asset_id"], level="success", message="流程执行完成")
 
     def _execute_node(self, *, flow: dict[str, Any], node: dict[str, Any], records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         node_type = (node.get("type") or "").strip().lower()
         config = node.get("config") or {}
+        if node_type == "delay_trigger":
+            return self._execute_delay_trigger(config)
+        if node_type == "cron_trigger":
+            return self._execute_cron_trigger(config)
         if node_type in {"http_request", "http"}:
             return self._execute_http_node(config)
         if node_type in {"mqtt_subscribe", "mqtt"}:
@@ -242,6 +270,14 @@ class FlowExecutor:
         if node_type in {"postgres_store", "postgresql_store", "pg_store"}:
             return self._execute_pg_store(flow, config, records)
         raise RuntimeError(f"不支持的节点类型: {node_type}")
+
+    def _execute_delay_trigger(self, config: dict[str, Any]) -> list[dict[str, Any]]:
+        interval_seconds = int(config.get("interval_seconds") or 0)
+        return [{"trigger": "delay", "interval_seconds": interval_seconds}]
+
+    def _execute_cron_trigger(self, config: dict[str, Any]) -> list[dict[str, Any]]:
+        schedule = str(config.get("schedule") or "").strip()
+        return [{"trigger": "cron", "schedule": schedule}]
 
     def _execute_http_node(self, config: dict[str, Any]) -> list[dict[str, Any]]:
         url = str(config.get("url") or "").strip()
@@ -359,7 +395,7 @@ class FlowExecutor:
             if errors:
                 raise RuntimeError(errors[0])
             if messages.empty():
-                raise RuntimeError(f"MQTT 在 {timeout_seconds}s 内未收到 Topic `{topic}` 的消息")
+                return []
 
             result: list[dict[str, Any]] = []
             while not messages.empty():

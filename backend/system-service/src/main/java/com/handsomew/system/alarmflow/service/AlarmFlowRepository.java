@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,7 +34,7 @@ public class AlarmFlowRepository {
         );
         String flowId = existing.isEmpty() ? UUID.randomUUID().toString() : String.valueOf(existing.get(0).get("id"));
         String status = existing.isEmpty() ? "stopped" : String.valueOf(existing.get(0).get("status"));
-        OffsetDateTime createdAt = existing.isEmpty() ? OffsetDateTime.now() : (OffsetDateTime) existing.get(0).get("created_at");
+        OffsetDateTime createdAt = existing.isEmpty() ? OffsetDateTime.now() : ((java.sql.Timestamp) existing.get(0).get("created_at")).toInstant().atOffset(ZoneOffset.UTC);
         String configJson = toConfigJson(request.nodes(), request.edges());
         return jdbcTemplate.queryForObject(
                 """

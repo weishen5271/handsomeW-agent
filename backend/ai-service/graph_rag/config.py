@@ -70,6 +70,11 @@ class GraphRAGConfig:
     chunk_overlap: int
     max_graph_depth: int
 
+    # RAG Context 配置（可选，有默认值）
+    max_context_chars: int = 2600
+    max_chars_per_doc: int = 380
+    timeout_seconds: int = 30
+
     @classmethod
     def from_env(cls) -> "GraphRAGConfig":
         """从 .env / 环境变量加载配置"""
@@ -105,6 +110,10 @@ class GraphRAGConfig:
             chunk_size=_get_env("CHUNK_SIZE", int),
             chunk_overlap=_get_env("CHUNK_OVERLAP", int),
             max_graph_depth=_get_env("MAX_GRAPH_DEPTH", int),
+            # 以下为可选配置，使用默认值
+            max_context_chars=_get_env("RAG_MAX_CONTEXT_CHARS", int, aliases=("MAX_CONTEXT_CHARS",)) if os.getenv("RAG_MAX_CONTEXT_CHARS") or os.getenv("MAX_CONTEXT_CHARS") else 2600,
+            max_chars_per_doc=_get_env("RAG_MAX_CHARS_PER_DOC", int, aliases=("MAX_CHARS_PER_DOC",)) if os.getenv("RAG_MAX_CHARS_PER_DOC") or os.getenv("MAX_CHARS_PER_DOC") else 380,
+            timeout_seconds=_get_env("RAG_TIMEOUT_SECONDS", int, aliases=("RAG_TIMEOUT",)) if os.getenv("RAG_TIMEOUT_SECONDS") or os.getenv("RAG_TIMEOUT") else 30,
         )
 
     @classmethod

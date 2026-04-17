@@ -491,6 +491,7 @@ export default function App() {
       let buffer = "";
       let finalContent = "";
       let latestDraft = "";
+      let hasError = false;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -526,17 +527,25 @@ export default function App() {
             }
             if (event.eventType === "done") finalContent = String(event.payload.content ?? latestDraft ?? "");
             if (event.eventType === "error") {
+              console.log("[DEBUG] Received error event:", event.payload);
+              hasError = true;
               const msg = String(event.payload.message ?? "请求过程中出现错误");
               appendMessage("assistant", `发生错误：${msg}`);
               setChatState({ draft: "", streamState: { loading: false, label: null } });
               return;
             }
+            if (event.eventType === "done") {
+              console.log("[DEBUG] Received done event:", event.payload);
+            }
           }
         }
       }
 
-      appendMessage("assistant", finalContent || latestDraft || "我已经完成处理。\n如需继续，请告诉我下一步目标。");
-      await fetchSessions(resolvedSessionId);
+      // Only show default completion message if no error occurred
+      if (!hasError) {
+        appendMessage("assistant", finalContent || latestDraft || "我已经完成处理。\n如需继续，请告诉我下一步目标。");
+        await fetchSessions(resolvedSessionId);
+      }
     } catch (error) {
       appendMessage("assistant", `发生错误：${error instanceof Error ? error.message : "未知错误"}`);
     } finally {

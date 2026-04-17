@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import threading
 from dataclasses import dataclass
@@ -145,6 +146,26 @@ class GraphRAGRuntime:
             # 在 graph 路由空返回时，兜底仍走真实 Milvus+Neo4j 混合检索
             documents = self.traditional_retrieval.hybrid_search(question, k)
         return RuntimeQueryResult(documents=documents, analysis=analysis)
+
+    async def query_async(
+        self,
+        question: str,
+        top_k: int | None = None,
+        llm_client: MyAgentsLLM | None = None,
+        timeout: float | None = None,
+    ) -> RuntimeQueryResult:
+        """Async version of query with optional timeout."""
+        timeout_seconds = timeout or self.config.timeout_seconds or 30
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(
+                    None,
+                    lambda: self.query(question, top_k, llm_client),
+                )
+        except asyncio.TimeoutError:
+            logger.warning(f"GraphRAG query timed out after {timeout_seconds}s: {question[:50]}...")
+            raise
 
     def close(self):
         if self.data_module:

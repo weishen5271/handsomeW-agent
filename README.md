@@ -80,6 +80,12 @@ Optional local env file:
 cp backend/system-service/.env.example backend/system-service/.env
 ```
 
+If the frontend runs on a different local dev port, configure system-service CORS with:
+
+```env
+CORS_ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*
+```
+
 Verify:
 
 - Health: `http://127.0.0.1:8081/health`

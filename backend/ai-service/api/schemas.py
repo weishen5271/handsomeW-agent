@@ -366,6 +366,18 @@ class AlarmFlowLogListResponse(BaseModel):
     logs: list[AlarmFlowLogResponse] = Field(default_factory=list)
 
 
+class AlarmFlowLiveLogResponse(BaseModel):
+    id: str
+    timestamp: datetime | str
+    level: str
+    message: str
+    node_id: str | None = None
+
+
+class AlarmFlowLiveLogListResponse(BaseModel):
+    logs: list[AlarmFlowLiveLogResponse] = Field(default_factory=list)
+
+
 class SceneAssetsReplaceRequest(BaseModel):
     asset_ids: list[str] = Field(default_factory=list)
 

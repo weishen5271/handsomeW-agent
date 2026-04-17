@@ -11,12 +11,15 @@ from api.auth import get_current_user
 from api.schemas import (
     AlarmFlowDeleteResponse,
     AlarmFlowDeployResponse,
+    AlarmFlowLiveLogListResponse,
+    AlarmFlowLiveLogResponse,
     AlarmFlowLogListResponse,
     AlarmFlowLogResponse,
     AlarmFlowResponse,
     AlarmFlowSaveRequest,
 )
 from flow.executor import flow_executor
+from flow.live_log_store import alarm_flow_live_log_store
 from flow.scheduler import alarm_flow_scheduler
 
 router = APIRouter(prefix="/digital-twin/assets/{asset_id}/alarm-flow", tags=["alarm-flow"])
@@ -71,8 +74,9 @@ async def deploy_alarm_flow_api(asset_id: str, _: dict = Depends(get_current_use
     flow = update_alarm_flow_status(asset_id, status="running", enabled=True)
     if flow is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="告警流程不存在")
+    alarm_flow_live_log_store.append(asset_id, level="info", message="流程已部署，触发节点或实时接入源已启动")
     alarm_flow_scheduler.register(asset_id)
-    return AlarmFlowDeployResponse(status="deployed", message="流程已部署，定时任务已启动")
+    return AlarmFlowDeployResponse(status="deployed", message="流程已部署，触发器已启动")
 
 
 @router.post("/stop", response_model=AlarmFlowDeployResponse)
@@ -81,6 +85,7 @@ async def stop_alarm_flow_api(asset_id: str, _: dict = Depends(get_current_user)
     if flow is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="告警流程不存在")
     alarm_flow_scheduler.unregister(asset_id)
+    alarm_flow_live_log_store.append(asset_id, level="info", message="流程已停用")
     return AlarmFlowDeployResponse(status="stopped", message="流程已停用，定时任务已清除")
 
 
@@ -93,3 +98,15 @@ async def get_alarm_flow_logs_api(
 ) -> AlarmFlowLogListResponse:
     logs = list_alarm_flow_logs(asset_id, node_id=node_id, limit=limit)
     return AlarmFlowLogListResponse(logs=[AlarmFlowLogResponse(**item) for item in logs])
+
+
+@router.get("/live-logs", response_model=AlarmFlowLiveLogListResponse)
+async def get_alarm_flow_live_logs_api(asset_id: str, _: dict = Depends(get_current_user)) -> AlarmFlowLiveLogListResponse:
+    logs = alarm_flow_live_log_store.list(asset_id)
+    return AlarmFlowLiveLogListResponse(logs=[AlarmFlowLiveLogResponse(**item) for item in logs])
+
+
+@router.delete("/live-logs", response_model=AlarmFlowDeleteResponse)
+async def clear_alarm_flow_live_logs_api(asset_id: str, _: dict = Depends(get_current_user)) -> AlarmFlowDeleteResponse:
+    alarm_flow_live_log_store.clear(asset_id)
+    return AlarmFlowDeleteResponse(status="cleared")

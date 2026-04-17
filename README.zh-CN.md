@@ -88,6 +88,12 @@ mvn spring-boot:run
 cp backend/system-service/.env.example backend/system-service/.env
 ```
 
+如果前端本地开发端口不是固定的 `5173`，可以给 system-service 配置：
+
+```env
+CORS_ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*
+```
+
 验证：
 
 - 健康检查：`http://127.0.0.1:8081/health`

@@ -57,4 +57,16 @@ public class AlarmFlowController {
                                          @RequestHeader(value = "Authorization", required = false) String authorization) {
         return alarmFlowService.logs(assetId, nodeId, limit, authHeaderUtils.extractBearerToken(authorization));
     }
+
+    @GetMapping("/live-logs")
+    public AlarmFlowLiveLogListResponse liveLogs(@PathVariable String assetId,
+                                                 @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return alarmFlowService.liveLogs(assetId, authHeaderUtils.extractBearerToken(authorization));
+    }
+
+    @DeleteMapping("/live-logs")
+    public AlarmFlowDeleteResponse clearLiveLogs(@PathVariable String assetId,
+                                                 @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return alarmFlowService.clearLiveLogs(assetId, authHeaderUtils.extractBearerToken(authorization));
+    }
 }

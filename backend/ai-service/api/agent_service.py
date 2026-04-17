@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -22,6 +23,17 @@ from api.user_store import (
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful ReAct assistant."
 logger = logging.getLogger(__name__)
+
+# RAG 增强提示词模板，可通过环境变量 RAG_SYSTEM_PROMPT_TEMPLATE 覆盖
+RAG_SYSTEM_PROMPT_TEMPLATE = os.environ.get(
+    "RAG_SYSTEM_PROMPT_TEMPLATE",
+    "{base_prompt}\n\n"
+    "你正在处理工业设备/数字孪生相关问题。\n"
+    "回答时请优先依据下方 GraphRAG 检索证据；如果证据不足，请明确说明不确定性，不要编造。\n"
+    "若用户问题涉及设备状态、故障诊断、影响分析、维护记录、备件或文档位置，请先使用这些证据再决定是否补充工具调用。\n\n"
+    "## GraphRAG 检索上下文\n"
+    "{rag_context}"
+)
 
 
 def _load_react_agent_class():
@@ -124,7 +136,7 @@ class AgentService:
             fallback_history=history,
         )
 
-        effective_system_prompt, rag_meta = self._build_prompt_with_rag(
+        effective_system_prompt, rag_meta = await self._build_prompt_with_rag_async(
             user_input=user_input,
             system_prompt=system_prompt,
             enable_rag=enable_rag,
@@ -201,7 +213,7 @@ class AgentService:
             fallback_history=history,
         )
 
-        effective_system_prompt, rag_meta = self._build_prompt_with_rag(
+        effective_system_prompt, rag_meta = await self._build_prompt_with_rag_async(
             user_input=user_input,
             system_prompt=system_prompt,
             enable_rag=enable_rag,
@@ -307,6 +319,7 @@ class AgentService:
             return base_prompt, {"enabled": False, "reason": "disabled_by_user"}
 
         try:
+            # 延迟导入避免循环依赖
             try:
                 from rag.graph_rag_bridge import GraphRAGBridge
             except ModuleNotFoundError:
@@ -314,51 +327,112 @@ class AgentService:
 
             bridge = GraphRAGBridge(llm_client=llm)
             if not bridge.is_ready:
-                return base_prompt, {"enabled": False, "reason": "graph_rag_not_ready"}
+                return base_prompt, {"enabled": False, "reason": "graph_rag_not_ready", "rag_available": False}
 
             rag_result = bridge.build_context(user_input, llm_client=llm)
             rag_meta = dict(rag_result.metadata or {})
 
             if not rag_meta.get("enabled"):
                 rag_meta.setdefault("reason", "retrieval_disabled")
+                rag_meta["rag_available"] = False
                 return base_prompt, rag_meta
 
             context_text = (rag_result.context_text or "").strip()
             if not context_text:
-                rag_meta.update(
-                    {
-                        "enabled": False,
-                        "reason": "empty_rag_context",
-                    }
-                )
+                rag_meta.update({
+                    "enabled": False,
+                    "reason": "empty_rag_context",
+                    "rag_available": False,
+                })
                 return base_prompt, rag_meta
 
             effective_prompt = self._compose_prompt_with_rag(
                 base_prompt=base_prompt,
                 rag_context=context_text,
             )
-            rag_meta.update(
-                {
-                    "enabled": True,
-                    "context_attached": True,
-                    "context_chars": len(context_text),
-                }
-            )
+            rag_meta.update({
+                "enabled": True,
+                "context_attached": True,
+                "context_chars": len(context_text),
+                "rag_available": True,
+            })
             return effective_prompt, rag_meta
         except Exception as exc:
             logger.exception("构建 GraphRAG Prompt 失败")
-            return base_prompt, {
+            error_prompt = (
+                f"{base_prompt}\n\n"
+                "[注意: 知识检索系统暂时不可用，请基于自身能力回答，如有需要可明确说明无法获取实时信息。]"
+            )
+            return error_prompt, {
                 "enabled": False,
                 "reason": "prompt_build_error",
                 "error": f"{type(exc).__name__}: {exc}",
+                "rag_available": False,
+            }
+
+    async def _build_prompt_with_rag_async(
+        self,
+        user_input: str,
+        system_prompt: str | None,
+        enable_rag: bool,
+        llm: MyAgentsLLM,
+    ) -> tuple[str, dict[str, Any]]:
+        """Async version of _build_prompt_with_rag for non-blocking RAG retrieval."""
+        base_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
+        if not enable_rag:
+            return base_prompt, {"enabled": False, "reason": "disabled_by_user"}
+
+        try:
+            # 延迟导入避免循环依赖
+            try:
+                from rag.graph_rag_bridge import GraphRAGBridge
+            except ModuleNotFoundError:
+                from backend.rag.graph_rag_bridge import GraphRAGBridge
+
+            bridge = GraphRAGBridge(llm_client=llm)
+            if not bridge.is_ready:
+                return base_prompt, {"enabled": False, "reason": "graph_rag_not_ready", "rag_available": False}
+
+            rag_result = await bridge.build_context_async(user_input, llm_client=llm)
+            rag_meta = dict(rag_result.metadata or {})
+
+            if not rag_meta.get("enabled"):
+                rag_meta.setdefault("reason", "retrieval_disabled")
+                rag_meta["rag_available"] = False
+                return base_prompt, rag_meta
+
+            context_text = (rag_result.context_text or "").strip()
+            if not context_text:
+                rag_meta.update({
+                    "enabled": False,
+                    "reason": "empty_rag_context",
+                    "rag_available": False,
+                })
+                return base_prompt, rag_meta
+
+            effective_prompt = self._compose_prompt_with_rag(
+                base_prompt=base_prompt,
+                rag_context=context_text,
+            )
+            rag_meta.update({
+                "enabled": True,
+                "context_attached": True,
+                "context_chars": len(context_text),
+                "rag_available": True,
+            })
+            return effective_prompt, rag_meta
+        except Exception as exc:
+            logger.exception("构建 GraphRAG Prompt 失败")
+            error_prompt = (
+                f"{base_prompt}\n\n"
+                "[注意: 知识检索系统暂时不可用，请基于自身能力回答，如有需要可明确说明无法获取实时信息。]"
+            )
+            return error_prompt, {
+                "enabled": False,
+                "reason": "prompt_build_error",
+                "error": f"{type(exc).__name__}: {exc}",
+                "rag_available": False,
             }
 
     def _compose_prompt_with_rag(self, base_prompt: str, rag_context: str) -> str:
-        return (
-            f"{base_prompt}\n\n"
-            "你正在处理工业设备/数字孪生相关问题。\n"
-            "回答时请优先依据下方 GraphRAG 检索证据；如果证据不足，请明确说明不确定性，不要编造。\n"
-            "若用户问题涉及设备状态、故障诊断、影响分析、维护记录、备件或文档位置，请先使用这些证据再决定是否补充工具调用。\n\n"
-            "## GraphRAG 检索上下文\n"
-            f"{rag_context}"
-        )
+        return RAG_SYSTEM_PROMPT_TEMPLATE.format(base_prompt=base_prompt, rag_context=rag_context)

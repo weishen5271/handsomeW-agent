@@ -149,6 +149,11 @@ public class AiProxyController {
                         .bodyToFlux(DataBuffer.class)
                         .doOnNext(buffer -> {
                             try {
+                                // Copy bytes out of the Netty buffer and push
+                                // directly to the servlet output stream.  We
+                                // flush on every chunk so each SSE event
+                                // reaches the browser immediately instead of
+                                // sitting in Tomcat's response buffer.
                                 byte[] bytes = new byte[buffer.readableByteCount()];
                                 buffer.read(bytes);
                                 outputStream.write(bytes);
@@ -159,6 +164,16 @@ public class AiProxyController {
                                 DataBufferUtils.release(buffer);
                             }
                         })
+                        .doOnError(err -> {
+                            try {
+                                String payload = "event: error\ndata: {\"message\":\""
+                                        + err.getMessage().replace("\"", "'")
+                                        + "\"}\n\n";
+                                outputStream.write(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                                outputStream.flush();
+                            } catch (IOException ignored) {
+                            }
+                        })
                         .blockLast();
 
         return ResponseEntity.ok()
@@ -166,6 +181,8 @@ public class AiProxyController {
                 .header(HttpHeaders.CACHE_CONTROL, "no-cache")
                 .header(HttpHeaders.CONNECTION, "keep-alive")
                 .header("X-Accel-Buffering", "no")
+                // Hint to any intermediate proxy / CDN to not buffer.
+                .header(HttpHeaders.PRAGMA, "no-cache")
                 .body(stream);
     }
 

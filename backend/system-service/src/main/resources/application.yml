@@ -7,6 +7,11 @@ spring:
     username: ${handsomew.postgresql.username}
     password: ${handsomew.postgresql.password}
     driver-class-name: org.postgresql.Driver
+  mvc:
+    async:
+      # SSE proxy needs a long async timeout; agent runs routinely exceed 30s
+      # (GraphRAG retrieval + multi-turn LLM calls).
+      request-timeout: ${SSE_ASYNC_TIMEOUT_MS:600000}
 
 server:
   port: ${SERVER_PORT:8081}

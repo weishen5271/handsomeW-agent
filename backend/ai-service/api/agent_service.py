@@ -25,8 +25,12 @@ from api.user_store import (
 DEFAULT_SYSTEM_PROMPT = (
     "你是一个有能力调用外部工具的智能助手。\n"
     "可用工具如下:\n{tools}\n\n"
-    "当用户提出简单问候或闲聊时，请直接用文字回复，不要调用工具。\n"
-    "当用户提出需要工具辅助的问题时，再根据需要调用合适的工具。"
+    "输出规范：\n"
+    "1. 用户问候或闲聊时，直接用中文回复，不要调用工具。\n"
+    "2. 需要外部信息或执行动作时才调用工具；已有足够信息就直接回答。\n"
+    "3. 工具返回后，立即把结果整合成**完整、面向用户的中文最终答案**，不要只输出思考、计划或中间状态。\n"
+    "4. 不要重复调用同一工具去拿相同信息；一旦信息足够，马上给出最终答案。\n"
+    "5. 最终答案结构清晰、结论明确，让用户直接能读懂。"
 )
 logger = logging.getLogger(__name__)
 
@@ -34,9 +38,13 @@ logger = logging.getLogger(__name__)
 RAG_SYSTEM_PROMPT_TEMPLATE = os.environ.get(
     "RAG_SYSTEM_PROMPT_TEMPLATE",
     "{base_prompt}\n\n"
-    "你正在处理工业设备/数字孪生相关问题。\n"
-    "回答时请优先依据下方 GraphRAG 检索证据；如果证据不足，请明确说明不确定性，不要编造。\n"
-    "若用户问题涉及设备状态、故障诊断、影响分析、维护记录、备件或文档位置，请先使用这些证据再决定是否补充工具调用。\n\n"
+    "你正在处理工业设备/数字孪生相关问题。\n\n"
+    "【GraphRAG 证据使用规则】\n"
+    "1. 下方已经附带了从 Neo4j + Milvus 实时检索得到的证据，请**优先**基于这些证据回答。\n"
+    "2. 如果证据已经能够支持回答用户问题，**必须直接组织成完整的中文最终答案返回给用户**，不要再调用任何工具，也不要只输出思考过程。\n"
+    "3. 仅当证据明显不足、且确实需要其他工具（如执行脚本/读取文件）才能继续时，才调用工具；调用后拿到结果立刻整合成最终答案。\n"
+    "4. 如果证据不足且没有合适工具，请明确告知用户不确定性与缺失项，不要编造。\n"
+    "5. 最终答案要求：中文、结构清晰（必要时使用小标题或要点）、结论明确、可直接阅读。\n\n"
     "## GraphRAG 检索上下文\n"
     "{rag_context}"
 )
@@ -250,8 +258,9 @@ class AgentService:
 
         queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         stream_flags = {
-            "assistant_emitted": False,
+            "final_assistant_emitted": False,
             "done_emitted": False,
+            "error_emitted": False,
         }
         loop = asyncio.get_running_loop()
 
@@ -260,10 +269,20 @@ class AgentService:
 
         def on_event(event: dict[str, Any]) -> None:
             event_type = event.get("type")
-            if event_type == "assistant":
-                stream_flags["assistant_emitted"] = True
+            data = event.get("data") or {}
+            # Only a final (tool-less, stop) assistant event counts toward
+            # stream completion.  Intermediate thinking must not satisfy the
+            # "has final draft" contract.
+            if event_type == "assistant" and data.get("is_final"):
+                stream_flags["final_assistant_emitted"] = True
             if event_type == "done":
+                if stream_flags["error_emitted"]:
+                    return
                 stream_flags["done_emitted"] = True
+            if event_type == "error":
+                if stream_flags["done_emitted"]:
+                    return
+                stream_flags["error_emitted"] = True
             push_event(event)
 
         async def runner() -> None:
@@ -304,51 +323,58 @@ class AgentService:
                     event_handler=on_event,
                 )
                 if result is None:
-                    push_event(
-                        {
-                            "type": "error",
-                            "data": {
-                                "message": "react_agent returned no result",
-                                "agent_type": agent_type.value,
-                            },
-                        }
-                    )
-                else:
-                    final_content = (result.content or "").strip()
-                    if not final_content and not stream_flags["assistant_emitted"]:
-                        # Result exists but content is empty and nothing was
-                        # streamed earlier – emit an error so the client is
-                        # never left with a silent empty response.
+                    if not stream_flags["error_emitted"] and not stream_flags["done_emitted"]:
                         push_event(
                             {
                                 "type": "error",
                                 "data": {
-                                    "message": "智能体返回了空内容",
+                                    "message": "智能体未返回有效结果",
                                     "agent_type": agent_type.value,
                                 },
                             }
                         )
-                    if final_content and not stream_flags["assistant_emitted"]:
-                        push_event(
-                            {
-                                "type": "assistant",
-                                "data": {
-                                    "content": final_content,
-                                    "finish_reason": result.finish_reason or "",
-                                },
-                            }
-                        )
-                    if final_content and not stream_flags["done_emitted"]:
-                        push_event(
-                            {
-                                "type": "done",
-                                "data": {
-                                    "content": final_content,
-                                    "finish_reason": result.finish_reason or "stop",
-                                    "usage": result.usage or {},
-                                },
-                            }
-                        )
+                        stream_flags["error_emitted"] = True
+                else:
+                    final_content = (result.content or "").strip()
+                    # Backstop: ReactAgent should already have emitted a final
+                    # assistant + done, but guarantee the contract here.
+                    if not final_content:
+                        if not stream_flags["error_emitted"] and not stream_flags["done_emitted"]:
+                            push_event(
+                                {
+                                    "type": "error",
+                                    "data": {
+                                        "message": "智能体返回了空内容",
+                                        "agent_type": agent_type.value,
+                                    },
+                                }
+                            )
+                            stream_flags["error_emitted"] = True
+                    else:
+                        if not stream_flags["final_assistant_emitted"]:
+                            push_event(
+                                {
+                                    "type": "assistant",
+                                    "data": {
+                                        "content": final_content,
+                                        "finish_reason": result.finish_reason or "stop",
+                                        "is_final": True,
+                                    },
+                                }
+                            )
+                            stream_flags["final_assistant_emitted"] = True
+                        if not stream_flags["done_emitted"] and not stream_flags["error_emitted"]:
+                            push_event(
+                                {
+                                    "type": "done",
+                                    "data": {
+                                        "content": final_content,
+                                        "finish_reason": result.finish_reason or "stop",
+                                        "usage": result.usage or {},
+                                    },
+                                }
+                            )
+                            stream_flags["done_emitted"] = True
             except Exception as exc:
                 push_event(
                     {
@@ -372,7 +398,9 @@ class AgentService:
 
             event_type = item.get("type")
             data = item.get("data", {})
-            if event_type == "assistant":
+            # Persist only the final answer – intermediate thinking must not
+            # be written back to chat history as the assistant turn.
+            if event_type == "assistant" and data.get("is_final"):
                 text = str(data.get("content", ""))
                 if text:
                     latest_assistant_content = text
@@ -414,7 +442,13 @@ class AgentService:
             rag_result = bridge.build_context(user_input, llm_client=llm)
             rag_meta = dict(rag_result.metadata or {})
             if rag_meta.get("reason") in {"timeout", "runtime_error"}:
-                raise RuntimeError(str(rag_meta.get("error") or f"GraphRAG {rag_meta['reason']}"))
+                logger.warning(
+                    "GraphRAG retrieval failed (%s), falling back to base prompt: %s",
+                    rag_meta["reason"],
+                    rag_meta.get("error", ""),
+                )
+                rag_meta["rag_available"] = False
+                return base_prompt, rag_meta
 
             if not rag_meta.get("enabled"):
                 rag_meta.setdefault("reason", "retrieval_disabled")
@@ -442,8 +476,8 @@ class AgentService:
             })
             return effective_prompt, rag_meta
         except Exception:
-            logger.exception("构建 GraphRAG Prompt 失败")
-            raise
+            logger.exception("构建 GraphRAG Prompt 失败，降级为基础 Prompt")
+            return base_prompt, {"enabled": False, "reason": "build_prompt_error", "rag_available": False}
 
     async def _build_prompt_with_rag_async(
         self,
@@ -469,7 +503,13 @@ class AgentService:
             rag_result = await bridge.build_context_async(user_input, llm_client=llm)
             rag_meta = dict(rag_result.metadata or {})
             if rag_meta.get("reason") in {"timeout", "runtime_error"}:
-                raise RuntimeError(str(rag_meta.get("error") or f"GraphRAG {rag_meta['reason']}"))
+                logger.warning(
+                    "GraphRAG retrieval failed (%s), falling back to base prompt: %s",
+                    rag_meta["reason"],
+                    rag_meta.get("error", ""),
+                )
+                rag_meta["rag_available"] = False
+                return base_prompt, rag_meta
 
             if not rag_meta.get("enabled"):
                 rag_meta.setdefault("reason", "retrieval_disabled")
@@ -497,8 +537,8 @@ class AgentService:
             })
             return effective_prompt, rag_meta
         except Exception:
-            logger.exception("构建 GraphRAG Prompt 失败")
-            raise
+            logger.exception("构建 GraphRAG Prompt 失败，降级为基础 Prompt")
+            return base_prompt, {"enabled": False, "reason": "build_prompt_error", "rag_available": False}
 
     def _compose_prompt_with_rag(self, base_prompt: str, rag_context: str) -> str:
         return RAG_SYSTEM_PROMPT_TEMPLATE.format(base_prompt=base_prompt, rag_context=rag_context)

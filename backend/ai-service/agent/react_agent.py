@@ -1,6 +1,9 @@
 from dotenv import load_dotenv
 from typing import Callable, Optional, Tuple
+import asyncio
 import json
+import logging
+import os
 import re
 import time
 
@@ -15,6 +18,14 @@ from tools.builtin.file_tool import ReadFileTool, WriteFileTool
 from tools.builtin.search_tool import SearchTool
 from tools.builtin.shell_tool import ShellExecTool
 from tools.builtin.skill_tool import GetSkillTool, ListSkillsTool
+
+
+logger = logging.getLogger(__name__)
+
+# Hard ceiling for a single LLM invocation.  LiteLLM's `timeout` param is
+# respected for some providers but silently ignored by others, so we wrap the
+# call with asyncio.wait_for as a belt-and-suspenders safeguard.
+_LLM_HARD_TIMEOUT_SECONDS = int(os.getenv("LLM_CALL_HARD_TIMEOUT", "90"))
 
 
 class ReactAgent(BaseAgent):
@@ -88,10 +99,117 @@ class ReactAgent(BaseAgent):
             )
 
             message_list = self.context.build_message(self.system_prompt or BASE_PROMPT_TEMPLATE)
-            llm_response = await self.llm.invoke(
-                message_list,
-                tools=self.context.get_tool_definitions(),
+
+            # Heartbeat so the client sees progress while we wait on the model.
+            self._emit_event(
+                event_handler,
+                "thinking",
+                {"iteration": iteration + 1, "stage": "llm_call_start"},
             )
+            logger.info(
+                "[react_agent] LLM call start (iteration=%s, tools=%s)",
+                iteration + 1,
+                len(self.context.get_tool_definitions() or []),
+            )
+            llm_started_at = time.monotonic()
+
+            # Run the LLM invocation as a task so we can drive a side-channel
+            # heartbeat.  If the async HTTP client inside litellm blocks the
+            # event loop, the heartbeat will also stall and that becomes the
+            # diagnostic signal ("没响应 = 事件循环被阻塞").
+            llm_task = asyncio.create_task(
+                self.llm.invoke(
+                    message_list,
+                    tools=self.context.get_tool_definitions(),
+                )
+            )
+
+            async def _pump_heartbeat() -> None:
+                try:
+                    while not llm_task.done():
+                        await asyncio.sleep(5)
+                        if llm_task.done():
+                            break
+                        elapsed = int((time.monotonic() - llm_started_at) * 1000)
+                        self._emit_event(
+                            event_handler,
+                            "thinking",
+                            {
+                                "iteration": iteration + 1,
+                                "stage": "llm_call_pending",
+                                "elapsed_ms": elapsed,
+                            },
+                        )
+                        logger.info(
+                            "[react_agent] LLM still pending iteration=%s elapsed=%sms",
+                            iteration + 1,
+                            elapsed,
+                        )
+                except asyncio.CancelledError:
+                    return
+
+            heartbeat_task = asyncio.create_task(_pump_heartbeat())
+
+            try:
+                llm_response = await asyncio.wait_for(
+                    llm_task,
+                    timeout=_LLM_HARD_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                llm_task.cancel()
+                logger.error(
+                    "[react_agent] LLM call timed out after %ss (iteration=%s)",
+                    _LLM_HARD_TIMEOUT_SECONDS,
+                    iteration + 1,
+                )
+                self._emit_event(
+                    event_handler,
+                    "error",
+                    {
+                        "message": f"模型调用超时（{_LLM_HARD_TIMEOUT_SECONDS}s）。"
+                        f"请检查 LLM_BASE_URL 可达性或缩短上下文后重试。",
+                        "iteration": iteration + 1,
+                    },
+                )
+                return None
+            except Exception as exc:
+                logger.exception(
+                    "[react_agent] LLM call failed at iteration %s", iteration + 1
+                )
+                self._emit_event(
+                    event_handler,
+                    "error",
+                    {
+                        "message": f"模型调用失败：{exc}",
+                        "iteration": iteration + 1,
+                    },
+                )
+                return None
+            finally:
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+
+            llm_elapsed_ms = int((time.monotonic() - llm_started_at) * 1000)
+            logger.info(
+                "[react_agent] LLM call done iteration=%s duration=%sms",
+                iteration + 1,
+                llm_elapsed_ms,
+            )
+            self._emit_event(
+                event_handler,
+                "thinking",
+                {
+                    "iteration": iteration + 1,
+                    "stage": "llm_call_done",
+                    "duration_ms": llm_elapsed_ms,
+                },
+            )
+            if verbose:
+                print(f"{green} llm call duration: {llm_elapsed_ms}ms")
+
             if llm_response is None:
                 self._emit_event(event_handler, "error", {"message": "模型未返回结果"})
                 return None
@@ -104,12 +222,31 @@ class ReactAgent(BaseAgent):
             if verbose:
                 print(f"{yellow} llm response: {llm_response.content}")
 
+            # Emit assistant event with is_final flag so downstream can tell
+            # intermediate thinking from the real final answer.
+            _content_preview = (llm_response.content or "").strip()
+            _has_tools = bool(llm_response.tool_calls)
+            _is_final_assistant = (
+                bool(_content_preview)
+                and not _has_tools
+                and (llm_response.finish_reason or "stop") == "stop"
+            )
+            logger.info(
+                "[react_agent] LLM response iteration=%s content_len=%s tool_calls=%s finish=%s is_final=%s",
+                iteration + 1,
+                len(_content_preview),
+                len(llm_response.tool_calls or []),
+                llm_response.finish_reason,
+                _is_final_assistant,
+            )
             self._emit_event(
                 event_handler,
                 "assistant",
                 {
                     "content": llm_response.content or "",
                     "finish_reason": llm_response.finish_reason or "",
+                    "is_final": _is_final_assistant,
+                    "iteration": iteration + 1,
                 },
             )
 
@@ -154,7 +291,21 @@ class ReactAgent(BaseAgent):
                 )
 
                 tool_start_time = time.monotonic()
-                tool_response = self.context.execute_tool(llm_response.tool_calls)
+                logger.info(
+                    "[react_agent] executing %s tool(s): %s",
+                    len(llm_response.tool_calls),
+                    [tc.name for tc in llm_response.tool_calls],
+                )
+                # Run synchronous tool execution in a worker thread so the
+                # event loop stays responsive – otherwise SSE events queued
+                # before/after stall until tools finish.
+                tool_response = await asyncio.to_thread(
+                    self.context.execute_tool, llm_response.tool_calls
+                )
+                logger.info(
+                    "[react_agent] tools finished in %sms",
+                    int((time.monotonic() - tool_start_time) * 1000),
+                )
                 for one in tool_response:
                     tool_duration_ms = int((time.monotonic() - tool_start_time) * 1000)
                     self.context.add_message(
@@ -205,17 +356,34 @@ class ReactAgent(BaseAgent):
                         if synthesized.usage:
                             for key in total_usage:
                                 total_usage[key] += synthesized.usage.get(key, 0)
+                        # Re-emit a final assistant event so stream consumers
+                        # get the synthesized answer as the canonical draft.
+                        self._emit_event(
+                            event_handler,
+                            "assistant",
+                            {
+                                "content": content_text,
+                                "finish_reason": synthesized.finish_reason or "stop",
+                                "is_final": True,
+                                "iteration": iteration + 1,
+                            },
+                        )
                     else:
                         self._emit_event(
                             event_handler,
                             "error",
                             {"message": "模型已结束，但未返回任何正文内容"},
                         )
-                        raise RuntimeError("模型已结束，但未返回任何正文内容")
+                        return None
 
                 self._running_status = False
                 if verbose:
                     print(f"{green} react run done: {llm_response.finish_reason}")
+                logger.info(
+                    "[react_agent] emitting done iteration=%s content_len=%s",
+                    iteration + 1,
+                    len(content_text or ""),
+                )
 
                 self._emit_event(
                     event_handler,
@@ -228,26 +396,43 @@ class ReactAgent(BaseAgent):
                 )
                 return llm_response
 
+        # Iteration budget exhausted without a terminating stop.  Force a
+        # tool-less synthesis so the user still gets a coherent answer.
         final_response = llm_response
-        if final_response is None or not (final_response.content or "").strip():
-            synthesized = await self._synthesize_final_answer()
-            if synthesized is not None and (synthesized.content or "").strip():
-                final_response = synthesized
+        synthesized = await self._synthesize_final_answer()
+        if synthesized is not None and (synthesized.content or "").strip():
+            final_response = synthesized
+            if synthesized.usage:
+                for key in total_usage:
+                    total_usage[key] += synthesized.usage.get(key, 0)
 
-        if final_response is None or not (final_response.content or "").strip():
+        final_text = (final_response.content or "").strip() if final_response else ""
+        if not final_text:
             self._emit_event(
                 event_handler,
                 "error",
                 {"message": "智能体执行结束，但未生成任何可展示内容"},
             )
-            raise RuntimeError("智能体执行结束，但未生成任何可展示内容")
+            return None
 
+        # Emit a final assistant event so downstream always sees an is_final
+        # draft before done, regardless of the path taken above.
+        self._emit_event(
+            event_handler,
+            "assistant",
+            {
+                "content": final_text,
+                "finish_reason": final_response.finish_reason or "length",
+                "is_final": True,
+                "iteration": max_iterations,
+            },
+        )
         self._emit_event(
             event_handler,
             "done",
             {
-                "content": final_response.content if final_response else "",
-                "finish_reason": final_response.finish_reason if final_response else "length",
+                "content": final_text,
+                "finish_reason": final_response.finish_reason or "length",
                 "usage": total_usage,
             },
         )

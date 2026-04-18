@@ -666,9 +666,37 @@ export default function App() {
             }
             if (event.eventType === "assistant") {
               const text = String(event.payload.content ?? "");
-              if (text) {
+              const isFinal = Boolean(event.payload.is_final);
+              // Only a final assistant event (no pending tool calls, stop
+              // finish reason) may become the user-visible draft.  Earlier
+              // iterations are reasoning/thinking – keep them out of draft
+              // so we never surface intermediate answers.
+              if (text && isFinal) {
                 latestDraft = text;
                 setChatState({ draft: text });
+              }
+            }
+            if (event.eventType === "thinking") {
+              const stage = String(event.payload.stage ?? "");
+              const iter = Number(event.payload.iteration ?? 1);
+              if (stage === "llm_call_start") {
+                setChatState({
+                  streamState: { loading: true, label: `正在调用模型（第 ${iter} 轮）` },
+                });
+              } else if (stage === "llm_call_pending") {
+                const elapsedMs = Number(event.payload.elapsed_ms ?? 0);
+                const secs = Math.round(elapsedMs / 1000);
+                setChatState({
+                  streamState: {
+                    loading: true,
+                    label: `模型仍在推理（第 ${iter} 轮，已 ${secs}s）`,
+                  },
+                });
+              } else if (stage === "llm_call_done") {
+                const ms = Number(event.payload.duration_ms ?? 0);
+                setChatState({
+                  streamState: { loading: true, label: `模型已返回（${ms}ms），正在整理` },
+                });
               }
             }
             if (event.eventType === "iteration_start") {
@@ -732,7 +760,11 @@ export default function App() {
               setChatState({ thinkingSteps: [...updated, resultStep] });
             }
             if (event.eventType === "done") {
-              finalContent = String(event.payload.content ?? latestDraft ?? "");
+              const doneText = String(event.payload.content ?? "");
+              // Trust `done.content` as the single source of truth; fall
+              // back to an already-captured final assistant draft only if
+              // the server omitted content.
+              finalContent = doneText || latestDraft;
               // Capture cumulative token usage from the agent run
               const usage = event.payload.usage as TokenUsage | undefined;
               if (usage) {
@@ -742,9 +774,8 @@ export default function App() {
             if (event.eventType === "error") {
               hasError = true;
               const msg = String(event.payload.message ?? "请求过程中出现错误");
+              setChatState({ draft: "", thinkingSteps: [], streamState: { loading: false, label: null } });
               appendMessage("assistant", `发生错误：${msg}`);
-              setChatState({ draft: "", streamState: { loading: false, label: null } });
-              return;
             }
           }
         }
@@ -761,13 +792,15 @@ export default function App() {
         if (!assistantText) {
           throw new Error("智能体未返回任何正文内容");
         }
+        setChatState({ draft: "", thinkingSteps: [], streamState: { loading: false, label: null } });
         appendMessage("assistant", assistantText);
         await fetchSessions(resolvedSessionId);
       }
     } catch (error) {
+      setChatState({ draft: "", thinkingSteps: [], streamState: { loading: false, label: null } });
       appendMessage("assistant", `发生错误：${error instanceof Error ? error.message : "未知错误"}`);
     } finally {
-      setChatState({ draft: "", streamState: { loading: false, label: null } });
+      setChatState({ draft: "", thinkingSteps: [], streamState: { loading: false, label: null } });
       scrollToBottom();
     }
   };
